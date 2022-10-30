@@ -15,7 +15,7 @@ impl MnistTrainData {
     }
 
     pub fn get_img_buffer(&self, idx: usize) -> &[u8]  {
-        &self.raw_data[(idx + 16)..(idx + 28*28)]
+        &self.raw_data[(28*28*idx + 16)..(16 + idx*28*28 + 28*28)]
     }
 
     pub fn get_image_label(&self, idx: usize) -> u8  {
@@ -29,7 +29,7 @@ impl MnistTrainData {
     }
 
     pub fn get_image_nn_input(&self, idx: usize) -> Array2<f64>  {
-        let buf = self.raw_data[(16 + idx)..(16 + idx + 28*28)].to_vec();
+        let buf = self.get_img_buffer(idx).to_vec();
         Array2::from_shape_vec((28*28, 1), buf).unwrap().map(|&val| f64::from(val))
     }
 }
