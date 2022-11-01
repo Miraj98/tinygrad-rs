@@ -2,7 +2,7 @@ pub mod neural_net {
     use std::iter::zip;
 
     use ndarray::{Array, Array2, Dimension};
-    use ndarray_rand::rand_distr::Uniform;
+    use ndarray_rand::rand_distr::StandardNormal;
     use ndarray_rand::RandomExt;
 
     #[derive(Debug)]
@@ -18,21 +18,18 @@ pub mod neural_net {
                 b: Vec::<Array2<f64>>::new(),
             };
 
-            m.w.push(Array2::random(
-                (hidden_layers[0], isize),
-                Uniform::new(-1.0, 1.0),
-            ));
+            m.w.push(Array2::random((hidden_layers[0], isize), StandardNormal));
             m.b.push(Array2::zeros((hidden_layers[0], 1)));
             for x in 0..hidden_layers.len() - 1 {
                 m.w.push(Array2::random(
                     (hidden_layers[x + 1], hidden_layers[x]),
-                    Uniform::new(-1., 1.),
+                    StandardNormal,
                 ));
                 m.b.push(Array2::zeros((hidden_layers[x + 1], 1)));
             }
             m.w.push(Array2::random(
                 (osize, hidden_layers[hidden_layers.len() - 1]),
-                Uniform::new(-1., 1.),
+                StandardNormal,
             ));
             m.b.push(Array2::zeros((osize, 1)));
 
@@ -43,45 +40,37 @@ pub mod neural_net {
             &mut self,
             input_batch: &Vec<Array2<f64>>,
             output_batch: &Vec<Array2<f64>>,
-            epochs: u16,
             lr: f64,
         ) {
-            for e in 0..epochs {
-                let mut total_cost = 0.;
-                let mut w_grads_batch_aggregate: Vec<Array2<f64>> = (0..self.w.len())
-                    .map(|l| Array2::<f64>::zeros(self.w[l].dim()))
-                    .collect();
-                let mut b_grads_batch_aggregate: Vec<Array2<f64>> = (0..self.b.len())
-                    .map(|l| Array2::<f64>::zeros(self.b[l].dim()))
-                    .collect();
+            let mut w_grads_batch_aggregate: Vec<Array2<f64>> = (0..self.w.len())
+                .map(|l| Array2::<f64>::zeros(self.w[l].dim()))
+                .collect();
+            let mut b_grads_batch_aggregate: Vec<Array2<f64>> = (0..self.b.len())
+                .map(|l| Array2::<f64>::zeros(self.b[l].dim()))
+                .collect();
 
-                for (x, y) in zip(input_batch, output_batch) {
-                    let (w_grad, b_grad, cost) = self.backprop(x, y);
+            for (x, y) in zip(input_batch, output_batch) {
+                let (w_grad, b_grad, _) = self.backprop(x, y);
 
-                    total_cost = total_cost + cost;
-
-                    for i in 0..w_grad.len() {
-                        w_grads_batch_aggregate[i] = &w_grads_batch_aggregate[i] + &w_grad[i];
-                    }
-
-                    for i in 0..b_grad.len() {
-                        b_grads_batch_aggregate[i] = &b_grads_batch_aggregate[i] + &b_grad[i];
-                    }
+                for i in 0..w_grad.len() {
+                    w_grads_batch_aggregate[i] = &w_grads_batch_aggregate[i] + &w_grad[i];
                 }
 
-                for i in 0..self.w.len() {
-                    self.w[i] = &self.w[i]
-                        - (lr * (&w_grads_batch_aggregate[i] / input_batch.len() as f64));
-                    self.b[i] = &self.b[i]
-                        - (lr * (&b_grads_batch_aggregate[i] / input_batch.len() as f64));
+                for i in 0..b_grad.len() {
+                    b_grads_batch_aggregate[i] = &b_grads_batch_aggregate[i] + &b_grad[i];
                 }
+            }
 
-                println!("Cost after epoch - {:?} is {:?}", e, total_cost)
+            for i in 0..self.w.len() {
+                self.w[i] =
+                    &self.w[i] - (lr * (&w_grads_batch_aggregate[i] / input_batch.len() as f64));
+                self.b[i] =
+                    &self.b[i] - (lr * (&b_grads_batch_aggregate[i] / input_batch.len() as f64));
             }
         }
 
         pub fn feed_forward(&mut self, input: &Array2<f64>) -> Array2<f64> {
-            let mut a = Array2::<f64>::zeros((1,1));
+            let mut a = Array2::<f64>::zeros((1, 1));
             let mut next_in = input;
             for (w, b) in zip(&self.w, &self.b) {
                 let z = w.dot(next_in) + b;
@@ -118,8 +107,7 @@ pub mod neural_net {
 
             // Calculate all err_rates
             let output_diff = &outputs[layers_len - 1] - y;
-            let mut delta =
-                (&output_diff) * &sigmoid_derivative(&outputs[layers_len - 1]);
+            let mut delta = (&output_diff) * &sigmoid_derivative(&outputs[layers_len - 1]);
             for l in (0..layers_len - 1).rev() {
                 let sd = sigmoid_derivative(&outputs[l]);
                 let _delta = &self.w[l + 1].t().dot(&delta) * &sd;

@@ -33,7 +33,7 @@ impl MnistTrainData {
 
     pub fn get_image_nn_input(&self, idx: usize) -> Array2<f64>  {
         let buf = self.get_img_buffer(idx).to_vec();
-        Array2::from_shape_vec((28*28, 1), buf).unwrap().map(|&val| f64::from(val))
+        Array2::from_shape_vec((28*28, 1), buf).unwrap().mapv(|val| (val as f64 / 256.))
     }
 
     pub fn save_as_png(&self, idx: usize) {
