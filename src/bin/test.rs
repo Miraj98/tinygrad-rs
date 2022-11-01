@@ -1,13 +1,9 @@
-mod mnist;
-mod tinygrad;
-
-use mnist::MnistTrainData;
+use tinygrad_rust::{neural_net, datasets::mnist};
 use ndarray::Array2;
 use ndarray_stats::QuantileExt;
-use tinygrad::nn::neural_net;
 
 fn main() {
-    let mnist_data = MnistTrainData::load();
+    let mnist_data = mnist::load_data();
     let batch_size = 10;
     let epochs = 30;
     let mut model = neural_net::Model::init(28 * 28, 10, vec![30]);
