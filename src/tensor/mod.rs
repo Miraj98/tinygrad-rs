@@ -1,95 +1,11 @@
-mod ops;
-
 use std::{cell::RefCell, collections::HashSet};
-
 use ndarray::Array2;
-
-#[derive(Debug)]
-enum OpType {
-    Add,
-    Sub,
-    Mul,
-}
-
-// a + b = c
-// c*e = d
-// d.backward()
-// dd/dc, dd/de, dd/da
-
-#[derive(Debug)]
-struct OpCtx<'a> {
-    inputs: Vec<RefCell<&'a Tensor<'a>>>,
-    op_type: OpType,
-}
-
-impl<'a> OpCtx<'a> {
-    pub fn backward(&self, incoming_grad: &Array2<f64>) {
-        match self.op_type {
-            OpType::Add => {
-                for i in 0..2 {
-                    let mut ref_grad = self.inputs[i].borrow().grad.borrow_mut();
-                    let dref_grad = ref_grad.as_ref();
-                    match dref_grad {
-                       Some(grad)  => {
-                            *ref_grad = Some(grad + incoming_grad);
-                       }
-                       None => {
-                            *ref_grad = Some(incoming_grad.to_owned());
-                       }
-                    }
-                }
-            }
-            OpType::Sub => {
-                for i in 0..2 {
-                    let mut ref_grad = self.inputs[i].borrow().grad.borrow_mut();
-                    let dref_grad = ref_grad.as_ref();
-                    match dref_grad {
-                        Some(grad) => {
-                            *ref_grad = Some(grad - incoming_grad);
-                        }
-                        None => {
-                            *ref_grad = Some(-incoming_grad.to_owned());
-                        }
-                    };
-                }
-            }
-            OpType::Mul => {
-                let mut ref_grad_0 = self.inputs[0].borrow().grad.borrow_mut();
-                let dref_grad_0 = ref_grad_0.as_ref();
-                match dref_grad_0 {
-                    Some(g) => {
-                        *ref_grad_0 =
-                            Some(g + incoming_grad * &self.inputs[1].borrow().data);
-                    }
-                    None => {
-                        *ref_grad_0 =
-                            Some(incoming_grad * &self.inputs[1].borrow().data);
-                    }
-                };
-
-                let mut ref_grad_1 = self.inputs[1].borrow().grad.borrow_mut();
-                let dref_grad_1 = ref_grad_1.as_ref();
-                match dref_grad_1{
-                    Some(g) => {
-                        *ref_grad_1 =
-                            Some(g + incoming_grad * &self.inputs[0].borrow().data);
-                    }
-                    None => {
-                        *ref_grad_1 =
-                            Some(incoming_grad * &self.inputs[0].borrow().data);
-                    }
-                };
-            }
-        };
-    }
-}
 
 #[derive(Debug)]
 pub struct Tensor<'a> {
     pub data: Array2<f64>,
     pub grad: RefCell<Option<Array2<f64>>>,
     _ctx: Option<OpCtx<'a>>,
-    requires_grad: Option<bool>,
 }
 
 impl<'a> Tensor<'a> {
@@ -98,7 +14,6 @@ impl<'a> Tensor<'a> {
             data: a,
             grad: RefCell::new(None),
             _ctx: None,
-            requires_grad: None,
         }
     }
 }
@@ -108,7 +23,6 @@ impl<'a> Tensor<'a> {
         Tensor {
             data: &self.data + &x.data,
             grad: RefCell::new(None),
-            requires_grad: None,
             _ctx: Some(OpCtx {
                 inputs: vec![RefCell::new(self), RefCell::new(x)],
                 op_type: OpType::Add,
@@ -120,7 +34,6 @@ impl<'a> Tensor<'a> {
         Tensor {
             data: &self.data * &x.data,
             grad: RefCell::new(None),
-            requires_grad: None,
             _ctx: Some(OpCtx {
                 inputs: vec![RefCell::new(self), RefCell::new(x)],
                 op_type: OpType::Mul,
@@ -132,7 +45,6 @@ impl<'a> Tensor<'a> {
         Tensor {
             data: &self.data - &x.data,
             grad: RefCell::new(None),
-            requires_grad: None,
             _ctx: Some(OpCtx {
                 inputs: vec![RefCell::new(self), RefCell::new(x)],
                 op_type: OpType::Sub,
@@ -141,8 +53,6 @@ impl<'a> Tensor<'a> {
     }
 
     pub fn backward(&self) {
-        // self.val.borrow_mut().grad = Some(Array2::<f64>::ones(self.val.borrow().data.dim()));
-
         let mut visited = HashSet::<*const Tensor>::new();
         let mut added = HashSet::<*const Tensor>::new();
         let mut topo = Vec::<&Tensor>::new();
@@ -212,5 +122,81 @@ impl<'a> Tensor<'a> {
         }
         let mut g = self.grad.borrow_mut();
         *g = Some(arr);
+    }
+}
+
+#[derive(Debug)]
+enum OpType {
+    Add,
+    Sub,
+    Mul,
+}
+
+
+#[derive(Debug)]
+struct OpCtx<'a> {
+    inputs: Vec<RefCell<&'a Tensor<'a>>>,
+    op_type: OpType,
+}
+
+impl<'a> OpCtx<'a> {
+    pub fn backward(&self, incoming_grad: &Array2<f64>) {
+        match self.op_type {
+            OpType::Add => {
+                for i in 0..2 {
+                    let mut ref_grad = self.inputs[i].borrow().grad.borrow_mut();
+                    let dref_grad = ref_grad.as_ref();
+                    match dref_grad {
+                       Some(grad)  => {
+                            *ref_grad = Some(grad + incoming_grad);
+                       }
+                       None => {
+                            *ref_grad = Some(incoming_grad.to_owned());
+                       }
+                    }
+                }
+            }
+            OpType::Sub => {
+                for i in 0..2 {
+                    let mut ref_grad = self.inputs[i].borrow().grad.borrow_mut();
+                    let dref_grad = ref_grad.as_ref();
+                    match dref_grad {
+                        Some(grad) => {
+                            *ref_grad = Some(grad - incoming_grad);
+                        }
+                        None => {
+                            *ref_grad = Some(-incoming_grad.to_owned());
+                        }
+                    };
+                }
+            }
+            OpType::Mul => {
+                let mut ref_grad_0 = self.inputs[0].borrow().grad.borrow_mut();
+                let dref_grad_0 = ref_grad_0.as_ref();
+                match dref_grad_0 {
+                    Some(g) => {
+                        *ref_grad_0 =
+                            Some(g + incoming_grad * &self.inputs[1].borrow().data);
+                    }
+                    None => {
+                        *ref_grad_0 =
+                            Some(incoming_grad * &self.inputs[1].borrow().data);
+                    }
+                };
+
+                let mut ref_grad_1 = self.inputs[1].borrow().grad.borrow_mut();
+                let dref_grad_1 = ref_grad_1.as_ref();
+                match dref_grad_1{
+                    Some(g) => {
+                        *ref_grad_1 =
+                            Some(g + incoming_grad * &self.inputs[0].borrow().data);
+                    }
+                    None => {
+                        *ref_grad_1 =
+                            Some(incoming_grad * &self.inputs[0].borrow().data);
+                    }
+                };
+            }
+        };
     }
 }
