@@ -1,4 +1,4 @@
-use ndarray::{Array2, Dimension, ShapeBuilder, Dim};
+use ndarray::{Array2, ShapeBuilder, Dim};
 use ndarray_rand::{RandomExt, rand_distr::StandardNormal};
 use std::{cell::RefCell, collections::HashSet};
 
