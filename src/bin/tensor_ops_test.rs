@@ -2,11 +2,17 @@ use tinygrad_rust::tensor::Tensor;
 use ndarray::arr2;
 
 fn main() {
-    let a = Tensor::new(arr2(&[[3.]]));
-    let b = Tensor::new(arr2(&[[12.]]));
-    let c = a.mul(&b);
-    let d = b.add(&c);
-    d.backward();
+    let a = Tensor::new(arr2(&[
+        [4., 3.],
+        [2., 1.]
+    ]));
+    let b = Tensor::new(arr2(&[
+        [1., 2.],
+        [3., 4.]
+    ]));
+    let c = a.matmul(&b);
+
+    c.backward();
 
     let b_grad = b.grad.borrow();
     println!("b_grad: {:?}", b_grad);
@@ -16,7 +22,4 @@ fn main() {
 
     let c_grad = c.grad.borrow();
     println!("c_grad: {:?}", c_grad);
-
-    let d_grad = d.grad.borrow();
-    println!("d_grad: {:?}", d_grad);
 }

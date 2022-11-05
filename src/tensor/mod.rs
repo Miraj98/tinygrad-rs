@@ -4,13 +4,13 @@ use std::{cell::RefCell, collections::HashSet};
 
 #[derive(Debug)]
 pub struct Tensor<'a> {
-    pub data: Array2<f64>,
-    pub grad: RefCell<Option<Array2<f64>>>,
+    pub data: Array2<f32>,
+    pub grad: RefCell<Option<Array2<f32>>>,
     _ctx: Option<OpCtx<'a>>,
 }
 
 impl<'a> Tensor<'a> {
-    pub fn new(a: Array2<f64>) -> Tensor<'a> {
+    pub fn new(a: Array2<f32>) -> Tensor<'a> {
         Tensor {
             data: a,
             grad: RefCell::new(None),
@@ -106,7 +106,7 @@ impl<'a> Tensor<'a> {
         work_stack.push(self);
 
         while work_stack.len() > 0 {
-            let mapped: Vec<&Array2<f64>> =
+            let mapped: Vec<&Array2<f32>> =
                 work_stack.as_slice().iter().map(|t0| &(*t0).data).collect();
             println!("Current working stack\n{:?}", mapped);
 
@@ -155,7 +155,7 @@ impl<'a> Tensor<'a> {
             println!("{:?}", elem.data);
         }
 
-        let arr = Array2::<f64>::ones(self.data.dim());
+        let arr = Array2::<f32>::ones(self.data.dim());
         for t in topo {
             match &t._ctx {
                 Some(op_node) => {
@@ -184,7 +184,7 @@ struct OpCtx<'a> {
 }
 
 impl<'a> OpCtx<'a> {
-    pub fn backward(&self, incoming_grad: &Array2<f64>) {
+    pub fn backward(&self, incoming_grad: &Array2<f32>) {
         match self.op_type {
             OpType::Add => {
                 for i in 0..2 {
