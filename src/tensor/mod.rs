@@ -1,5 +1,6 @@
+use ndarray::{Array2, Dimension, ShapeBuilder, Dim};
+use ndarray_rand::{RandomExt, rand_distr::StandardNormal};
 use std::{cell::RefCell, collections::HashSet};
-use ndarray::Array2;
 
 #[derive(Debug)]
 pub struct Tensor<'a> {
@@ -12,6 +13,39 @@ impl<'a> Tensor<'a> {
     pub fn new(a: Array2<f64>) -> Tensor<'a> {
         Tensor {
             data: a,
+            grad: RefCell::new(None),
+            _ctx: None,
+        }
+    }
+
+    pub fn ones<Sh>(s: Sh) -> Tensor<'a>
+    where
+        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
+    {
+        Tensor {
+            data: Array2::ones(s),
+            grad: RefCell::new(None),
+            _ctx: None,
+        }
+    }
+
+    pub fn zeros<Sh>(s: Sh) -> Tensor<'a>
+    where
+        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
+    {
+        Tensor {
+            data: Array2::zeros(s),
+            grad: RefCell::new(None),
+            _ctx: None,
+        }
+    }
+
+    pub fn randn<Sh>(s: Sh) -> Tensor<'a>
+    where
+        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
+    {
+        Tensor {
+            data: Array2::random(s, StandardNormal),
             grad: RefCell::new(None),
             _ctx: None,
         }
@@ -48,6 +82,17 @@ impl<'a> Tensor<'a> {
             _ctx: Some(OpCtx {
                 inputs: vec![RefCell::new(self), RefCell::new(x)],
                 op_type: OpType::Sub,
+            }),
+        }
+    }
+
+    pub fn matmul(&'a self, x: &'a Tensor<'a>) -> Tensor<'a> {
+        Tensor {
+            data: (&self.data).dot(&x.data),
+            grad: RefCell::new(None),
+            _ctx: Some(OpCtx {
+                inputs: vec![RefCell::new(self), RefCell::new(x)],
+                op_type: OpType::Matmul,
             }),
         }
     }
@@ -91,7 +136,6 @@ impl<'a> Tensor<'a> {
                                 }
                             }
                         }
-                        
                     } else {
                         println!("Pushing (ctx = None)...\n{:?}", t.data);
                         if !added.contains(&t_ptr) {
@@ -130,8 +174,8 @@ enum OpType {
     Add,
     Sub,
     Mul,
+    Matmul,
 }
-
 
 #[derive(Debug)]
 struct OpCtx<'a> {
@@ -147,12 +191,12 @@ impl<'a> OpCtx<'a> {
                     let mut ref_grad = self.inputs[i].borrow().grad.borrow_mut();
                     let dref_grad = ref_grad.as_ref();
                     match dref_grad {
-                       Some(grad)  => {
+                        Some(grad) => {
                             *ref_grad = Some(grad + incoming_grad);
-                       }
-                       None => {
+                        }
+                        None => {
                             *ref_grad = Some(incoming_grad.to_owned());
-                       }
+                        }
                     }
                 }
             }
@@ -175,25 +219,46 @@ impl<'a> OpCtx<'a> {
                 let dref_grad_0 = ref_grad_0.as_ref();
                 match dref_grad_0 {
                     Some(g) => {
-                        *ref_grad_0 =
-                            Some(g + incoming_grad * &self.inputs[1].borrow().data);
+                        *ref_grad_0 = Some(g + incoming_grad * &self.inputs[1].borrow().data);
                     }
                     None => {
-                        *ref_grad_0 =
-                            Some(incoming_grad * &self.inputs[1].borrow().data);
+                        *ref_grad_0 = Some(incoming_grad * &self.inputs[1].borrow().data);
                     }
                 };
 
                 let mut ref_grad_1 = self.inputs[1].borrow().grad.borrow_mut();
                 let dref_grad_1 = ref_grad_1.as_ref();
-                match dref_grad_1{
+                match dref_grad_1 {
                     Some(g) => {
-                        *ref_grad_1 =
-                            Some(g + incoming_grad * &self.inputs[0].borrow().data);
+                        *ref_grad_1 = Some(g + incoming_grad * &self.inputs[0].borrow().data);
                     }
                     None => {
+                        *ref_grad_1 = Some(incoming_grad * &self.inputs[0].borrow().data);
+                    }
+                };
+            }
+            OpType::Matmul => {
+                let mut ref_grad_0 = self.inputs[0].borrow().grad.borrow_mut();
+                let dref_grad_0 = ref_grad_0.as_ref();
+                match dref_grad_0 {
+                    Some(g) => {
+                        *ref_grad_0 =
+                            Some(g + incoming_grad.dot(&self.inputs[1].borrow().data.t()));
+                    }
+                    None => {
+                        *ref_grad_0 = Some(incoming_grad.dot(&self.inputs[1].borrow().data.t()));
+                    }
+                };
+
+                let mut ref_grad_1 = self.inputs[1].borrow().grad.borrow_mut();
+                let dref_grad_1 = ref_grad_1.as_ref();
+                match dref_grad_1 {
+                    Some(g) => {
                         *ref_grad_1 =
-                            Some(incoming_grad * &self.inputs[0].borrow().data);
+                            Some(g + &self.inputs[0].borrow().data.t().dot(incoming_grad));
+                    }
+                    None => {
+                        *ref_grad_1 = Some(self.inputs[0].borrow().data.t().dot(incoming_grad));
                     }
                 };
             }
