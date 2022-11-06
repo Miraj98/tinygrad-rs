@@ -152,12 +152,7 @@ impl<'a> Tensor<'a> {
         work_stack.push(self);
 
         while work_stack.len() > 0 {
-            let mapped: Vec<&Array2<f32>> =
-                work_stack.as_slice().iter().map(|t0| &(*t0).data).collect();
-            println!("Current working stack\n{:?}", mapped);
-
             if let Some(t) = work_stack.pop() {
-                println!("Current task\n{:?}", t.data);
                 let t_ptr = t as *const Tensor;
                 if visited.contains(&t_ptr) {
                     if !added.contains(&t_ptr) {
@@ -183,29 +178,26 @@ impl<'a> Tensor<'a> {
                             }
                         }
                     } else {
-                        println!("Pushing (ctx = None)...\n{:?}", t.data);
                         if !added.contains(&t_ptr) {
                             topo.push(t);
                             added.insert(t_ptr);
                         }
                     };
                 }
-                println!("\n\n")
             }
         }
 
         topo.reverse();
 
-        println!("Topo order");
-        for elem in topo.iter() {
-            println!("{:?}", elem.data);
-        }
-
         let arr = Array2::<f32>::ones(self.data.dim());
         for t in topo {
             match &t._ctx {
                 Some(op_node) => {
-                    op_node.backward(&arr);
+                    if let Some(grad) = &*t.grad.borrow() {
+                        op_node.backward(&grad);
+                    } else {
+                        op_node.backward(&arr);
+                    }
                 }
                 None => {}
             }
