@@ -1,4 +1,4 @@
-use ndarray::{Array2, ShapeBuilder, Dim};
+use ndarray::{Array2, ShapeBuilder, Dim, arr2};
 use ndarray_rand::{RandomExt, rand_distr::StandardNormal};
 use std::{cell::RefCell, collections::HashSet};
 
@@ -97,6 +97,52 @@ impl<'a> Tensor<'a> {
         }
     }
 
+    pub fn mean(&'a self) -> Tensor<'a> {
+        let mean_val = self.data.mean().unwrap();
+        Tensor {
+            data: arr2(&[[mean_val]]),
+            grad: RefCell::new(None),
+            _ctx: Some(OpCtx {
+                inputs: vec![RefCell::new(self)],
+                op_type: OpType::Mean,
+            }),
+        }
+    }
+
+    pub fn sum(&'a self) -> Tensor<'a> {
+        let sum_val = self.data.mean().unwrap();
+        Tensor {
+            data: arr2(&[[sum_val]]),
+            grad: RefCell::new(None),
+            _ctx: Some(OpCtx {
+                inputs: vec![RefCell::new(self)],
+                op_type: OpType::Sum,
+            }),
+        }
+    }
+
+    pub fn sigmoid(&'a self) -> Tensor<'a> {
+        Tensor {
+            data: self.data.mapv(|val| 1.0 / (1.0 + f32::exp(-val))),
+            grad: RefCell::new(None),
+            _ctx: Some(OpCtx {
+                inputs: vec![RefCell::new(self)],
+                op_type: OpType::Sigmoid,
+            }),
+        }
+    }
+
+    pub fn sq(&'a self) -> Tensor<'a> {
+        Tensor {
+            data: self.data.mapv(|val| val * val),
+            grad: RefCell::new(None),
+            _ctx: Some(OpCtx {
+                inputs: vec![RefCell::new(self)],
+                op_type: OpType::Square,
+            }),
+        }
+    }
+
     pub fn backward(&self) {
         let mut visited = HashSet::<*const Tensor>::new();
         let mut added = HashSet::<*const Tensor>::new();
@@ -175,6 +221,10 @@ enum OpType {
     Sub,
     Mul,
     Matmul,
+    Mean,
+    Square,
+    Sum,
+    Sigmoid
 }
 
 #[derive(Debug)]
@@ -259,6 +309,56 @@ impl<'a> OpCtx<'a> {
                     }
                     None => {
                         *ref_grad_1 = Some(self.inputs[0].borrow().data.t().dot(incoming_grad));
+                    }
+                };
+            }
+            OpType::Sigmoid => {
+                let mut ref_grad = self.inputs[0].borrow().grad.borrow_mut();
+                let dref_grad = ref_grad.as_ref();
+                match dref_grad {
+                    Some(g) => {
+                        *ref_grad = Some(g + incoming_grad * &self.inputs[0].borrow().data.mapv(|f| f * (1. - f)));
+                    }
+                    None => {
+                        *ref_grad = Some(incoming_grad * self.inputs[0].borrow().data.mapv(|f| f * (1. - f)));
+                    }
+                };
+            }
+            OpType::Mean => {
+                let mut ref_grad = self.inputs[0].borrow().grad.borrow_mut();
+                let dref_grad = ref_grad.as_ref();
+                match dref_grad {
+                    Some(g) => {
+                        let input = self.inputs[0].borrow();
+                        *ref_grad = Some(g + incoming_grad / input.data.len() as f32);
+                    }
+                    None => {
+                        let input = self.inputs[0].borrow();
+                        *ref_grad = Some(incoming_grad / input.data.len() as f32);
+                    }
+                };
+            }
+            OpType::Sum => {
+                let mut ref_grad = self.inputs[0].borrow().grad.borrow_mut();
+                let dref_grad = ref_grad.as_ref();
+                match dref_grad {
+                    Some(g) => {
+                        *ref_grad = Some(g + incoming_grad);
+                    }
+                    None => {
+                        *ref_grad = Some(incoming_grad.to_owned());
+                    }
+                };
+            }
+            OpType::Square => {
+                let mut ref_grad = self.inputs[0].borrow().grad.borrow_mut();
+                let dref_grad = ref_grad.as_ref();
+                match dref_grad {
+                    Some(g) => {
+                        *ref_grad = Some(g + 2.0 * &self.inputs[0].borrow().data * incoming_grad);
+                    }
+                    None => {
+                        *ref_grad = Some(2.0 * incoming_grad);
                     }
                 };
             }
