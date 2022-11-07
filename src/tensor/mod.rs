@@ -1,145 +1,163 @@
 use ndarray::{Array2, ShapeBuilder, Dim, arr2};
 use ndarray_rand::{RandomExt, rand_distr::StandardNormal};
-use std::{cell::RefCell, collections::HashSet};
+use std::{cell::RefCell, collections::HashSet, rc::Weak};
+
+pub struct Tensor {
+    t: RefCell<TensorData>,
+}
 
 #[derive(Debug)]
-pub struct Tensor<'a> {
+pub struct TensorData {
     pub data: Array2<f32>,
-    pub grad: RefCell<Option<Array2<f32>>>,
-    _ctx: Option<OpCtx<'a>>,
+    pub grad: Option<Array2<f32>>,
+    saved_tensors: Option<Vec<Weak<RefCell<TensorData>>>>,
+    op_type: Option<OpType>,
+    //._ctx: Option<OpCtx<'a>>,
 }
 
-impl<'a> Tensor<'a> {
-    pub fn new(a: Array2<f32>) -> Tensor<'a> {
+impl Tensor {
+    pub fn new(a: Array2<f32>) -> Tensor {
         Tensor {
-            data: a,
-            grad: RefCell::new(None),
-            _ctx: None,
+            t: RefCell::new(TensorData {
+                data: a,
+                grad: None,
+                saved_tensors: None,
+                op_type: None,
+            }),
         }
     }
 
-    pub fn ones<Sh>(s: Sh) -> Tensor<'a>
+    pub fn ones<Sh>(s: Sh) -> Tensor
     where
         Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
     {
         Tensor {
-            data: Array2::ones(s),
-            grad: RefCell::new(None),
-            _ctx: None,
+            t: RefCell::new(TensorData {
+                data: Array2::ones(s),
+                grad: None,
+                saved_tensors: None,
+                op_type: None
+            }),
         }
     }
 
-    pub fn zeros<Sh>(s: Sh) -> Tensor<'a>
+    pub fn zeros<Sh>(s: Sh) -> Tensor
     where
         Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
     {
         Tensor {
-            data: Array2::zeros(s),
-            grad: RefCell::new(None),
-            _ctx: None,
+            t: RefCell::new(TensorData {
+                data: Array2::zeros(s),
+                grad: None,
+                saved_tensors: None,
+                op_type: None
+            }),
         }
     }
 
-    pub fn randn<Sh>(s: Sh) -> Tensor<'a>
+    pub fn randn<Sh>(s: Sh) -> Tensor
     where
         Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
     {
         Tensor {
-            data: Array2::random(s, StandardNormal),
-            grad: RefCell::new(None),
-            _ctx: None,
+            t: RefCell::new(TensorData {
+                data: Array2::random(s, StandardNormal),
+                grad: None,
+                saved_tensors: None,
+                op_type: None,
+            }),
         }
     }
 }
 
-impl<'a> Tensor<'a> {
-    pub fn add(&'a self, x: &'a Tensor<'a>) -> Tensor<'a> {
+impl Tensor {
+    pub fn add(&self, x: & Tensor) -> Tensor {
         Tensor {
-            data: &self.data + &x.data,
-            grad: RefCell::new(None),
-            _ctx: Some(OpCtx {
-                inputs: vec![RefCell::new(self), RefCell::new(x)],
-                op_type: OpType::Add,
+            t: RefCell::new(TensorData {
+                data: &self.data + &x.data,
+                grad: None,
+                saved_tensors: Some(vec![Weak::from(RefCell::new(self)), Weak::from(RefCell::new(x))]),
+                op_type: Some(OpType::Add),
             }),
         }
     }
 
-    pub fn mul(&'a self, x: &'a Tensor<'a>) -> Tensor<'a> {
+    pub fn mul(&self, x: &Tensor) -> Tensor {
         Tensor {
-            data: &self.data * &x.data,
-            grad: RefCell::new(None),
-            _ctx: Some(OpCtx {
-                inputs: vec![RefCell::new(self), RefCell::new(x)],
-                op_type: OpType::Mul,
-            }),
+            t: RefCell::new(TensorData {
+                data: &self.data * &x.data,
+                grad: None,
+                saved_tensors: Some(vec![Weak::from(RefCell::new(self)), Weak::from(RefCell::new(x))]),
+                op_type: Some(OpType::Mul),
+             }),
         }
     }
 
-    pub fn sub(&'a self, x: &'a Tensor<'a>) -> Tensor<'a> {
+    pub fn sub(&self, x: &Tensor) -> Tensor {
         Tensor {
-            data: &self.data - &x.data,
-            grad: RefCell::new(None),
-            _ctx: Some(OpCtx {
-                inputs: vec![RefCell::new(self), RefCell::new(x)],
-                op_type: OpType::Sub,
-            }),
+            t: RefCell::new(TensorData {
+                data: &self.data - &x.data,
+                grad: RefCell::new(None),
+                saved_tensors: Some(vec![Weak::from(RefCell::new(self)), Weak::from(RefCell::new(x))]),
+                op_type: Some(OpType::Sub),
+            })
         }
     }
 
-    pub fn matmul(&'a self, x: &'a Tensor<'a>) -> Tensor<'a> {
+    pub fn matmul(&self, x: &Tensor) -> Tensor {
         Tensor {
-            data: (&self.data).dot(&x.data),
-            grad: RefCell::new(None),
-            _ctx: Some(OpCtx {
-                inputs: vec![RefCell::new(self), RefCell::new(x)],
-                op_type: OpType::Matmul,
-            }),
+            t: RefCell::new(TensorData {
+                data: (&self.data).dot(&x.data),
+                grad: None,
+                saved_tensors: Some(vec![Weak::from(RefCell::new(self)), Weak::from(RefCell::new(x))]),
+                op_type: Some(OpType::Matmul),
+            })
         }
     }
 
-    pub fn mean(&'a self) -> Tensor<'a> {
+    pub fn mean(&self) -> Tensor {
         let mean_val = self.data.mean().unwrap();
         Tensor {
-            data: arr2(&[[mean_val]]),
-            grad: RefCell::new(None),
-            _ctx: Some(OpCtx {
-                inputs: vec![RefCell::new(self)],
-                op_type: OpType::Mean,
-            }),
+            t: RefCell::new(TensorData {
+                data: arr2(&[[mean_val]]),
+                grad: (None),
+                saved_tensors: Some(vec![Weak::from(RefCell::new(self))]),
+                op_type: Some(OpType::Mean),
+            })
         }
     }
 
-    pub fn sum(&'a self) -> Tensor<'a> {
+    pub fn sum(&self) -> Tensor {
         let sum_val = self.data.mean().unwrap();
         Tensor {
-            data: arr2(&[[sum_val]]),
-            grad: RefCell::new(None),
-            _ctx: Some(OpCtx {
-                inputs: vec![RefCell::new(self)],
-                op_type: OpType::Sum,
-            }),
+            t: RefCell::new(TensorData {
+                data: arr2(&[[sum_val]]),
+                grad: (None),
+                saved_tensors: Some(vec![Weak::from(RefCell::new(self))]),
+                op_type: Some(OpType::Sum),
+            })
         }
     }
 
-    pub fn sigmoid(&'a self) -> Tensor<'a> {
+    pub fn sigmoid(&self) -> Tensor {
         Tensor {
-            data: self.data.mapv(|val| 1.0 / (1.0 + f32::exp(-val))),
-            grad: RefCell::new(None),
-            _ctx: Some(OpCtx {
-                inputs: vec![RefCell::new(self)],
-                op_type: OpType::Sigmoid,
-            }),
+            t: RefCell::new(TensorData {
+                data: self.data.mapv(|val| 1.0 / (1.0 + f32::exp(-val))),
+                grad: (None),
+                saved_tensors: Some(vec![Weak::from(RefCell::new(self))]),
+                op_type: Some(OpType::Sigmoid),
+            })
         }
     }
 
-    pub fn sq(&'a self) -> Tensor<'a> {
+    pub fn sq(&self) -> Tensor {
         Tensor {
-            data: self.data.mapv(|val| val * val),
-            grad: RefCell::new(None),
-            _ctx: Some(OpCtx {
-                inputs: vec![RefCell::new(self)],
-                op_type: OpType::Square,
-            }),
+            t: RefCell::new(TensorData {
+                data: self.t.borrow().data.mapv(|val| val * val),
+                grad: (None),
+                saved_tensors: Some(vec![Weak::from(RefCell::new(self.t.borrow()))]),
+                op_type: Some(OpType::Square),
+            })
         }
     }
 
@@ -217,12 +235,6 @@ enum OpType {
     Square,
     Sum,
     Sigmoid
-}
-
-#[derive(Debug)]
-struct OpCtx<'a> {
-    inputs: Vec<RefCell<&'a Tensor<'a>>>,
-    op_type: OpType,
 }
 
 impl<'a> OpCtx<'a> {
