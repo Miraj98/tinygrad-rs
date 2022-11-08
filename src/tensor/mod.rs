@@ -2,11 +2,11 @@ pub mod ops;
 
 use ndarray::{Array2, Dim, ShapeBuilder};
 use ndarray_rand::{rand_distr::StandardNormal, RandomExt};
-use ops::{Backprop, BinaryOpType, BinaryOps, OpType, TensorConstructors, UnaryOpType, UnaryOps};
+use ops::{Backprop, BinaryOpType, BinaryOps, OpType, TensorConstructors, UnaryOpType};
 use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
 #[derive(Debug)]
-struct TensorData {
+pub struct TensorData {
     pub value: Array2<f32>,
     pub grad: RefCell<Option<Array2<f32>>>,
 }
@@ -19,7 +19,7 @@ struct TensorContext {
 
 #[derive(Debug)]
 pub struct TensorCore {
-    data: Rc<TensorData>,
+    pub data: Rc<TensorData>,
     ctx: Option<TensorContext>,
 }
 
@@ -203,12 +203,11 @@ impl Backprop for Tensor {
                     }
                 }
             }
-            unsafe {
-                println!("{:?}", (**i).data.value);
-            }
         }
 
-        println!("{:?}", topo);
+
+        let mut g = self.data.grad.borrow_mut();
+        *g = Some(arr);
     }
 }
 

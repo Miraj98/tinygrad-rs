@@ -5,15 +5,15 @@ use std::iter::zip;
 
 #[derive(Debug)]
 pub struct Model {
-    pub w: Vec<Array2<f64>>, // weights
-    pub b: Vec<Array2<f64>>, // biases
+    pub w: Vec<Array2<f32>>, // weights
+    pub b: Vec<Array2<f32>>, // biases
 }
 
 impl Model {
     pub fn init(isize: usize, osize: usize, hidden_layers: Vec<usize>) -> Model {
         let mut m = Model {
-            w: Vec::<Array2<f64>>::new(),
-            b: Vec::<Array2<f64>>::new(),
+            w: Vec::<Array2<f32>>::new(),
+            b: Vec::<Array2<f32>>::new(),
         };
 
         m.w.push(Array2::random((hidden_layers[0], isize), StandardNormal));
@@ -36,15 +36,15 @@ impl Model {
 
     pub fn train_mini_batch(
         &mut self,
-        input_batch: &Vec<Array2<f64>>,
-        output_batch: &Vec<Array2<f64>>,
-        lr: f64,
+        input_batch: &Vec<Array2<f32>>,
+        output_batch: &Vec<Array2<f32>>,
+        lr: f32,
     ) {
-        let mut w_grads_batch_aggregate: Vec<Array2<f64>> = (0..self.w.len())
-            .map(|l| Array2::<f64>::zeros(self.w[l].dim()))
+        let mut w_grads_batch_aggregate: Vec<Array2<f32>> = (0..self.w.len())
+            .map(|l| Array2::<f32>::zeros(self.w[l].dim()))
             .collect();
-        let mut b_grads_batch_aggregate: Vec<Array2<f64>> = (0..self.b.len())
-            .map(|l| Array2::<f64>::zeros(self.b[l].dim()))
+        let mut b_grads_batch_aggregate: Vec<Array2<f32>> = (0..self.b.len())
+            .map(|l| Array2::<f32>::zeros(self.b[l].dim()))
             .collect();
 
         for (x, y) in zip(input_batch, output_batch) {
@@ -61,14 +61,14 @@ impl Model {
 
         for i in 0..self.w.len() {
             self.w[i] =
-                &self.w[i] - (lr * (&w_grads_batch_aggregate[i] / input_batch.len() as f64));
+                &self.w[i] - (lr * (&w_grads_batch_aggregate[i] / input_batch.len() as f32));
             self.b[i] =
-                &self.b[i] - (lr * (&b_grads_batch_aggregate[i] / input_batch.len() as f64));
+                &self.b[i] - (lr * (&b_grads_batch_aggregate[i] / input_batch.len() as f32));
         }
     }
 
-    pub fn feed_forward(&mut self, input: &Array2<f64>) -> Array2<f64> {
-        let mut a = Array2::<f64>::zeros((1, 1));
+    pub fn feed_forward(&mut self, input: &Array2<f32>) -> Array2<f32> {
+        let mut a = Array2::<f32>::zeros((1, 1));
         let mut next_in = input;
         for (w, b) in zip(&self.w, &self.b) {
             let z = w.dot(next_in) + b;
@@ -80,19 +80,19 @@ impl Model {
 
     pub fn backprop(
         &mut self,
-        x: &Array2<f64>,
-        y: &Array2<f64>,
-    ) -> (Vec<Array2<f64>>, Vec<Array2<f64>>, f64) {
-        let mut w_grad: Vec<Array2<f64>> = (0..self.w.len())
-            .map(|l| Array2::<f64>::zeros(self.w[l].dim()))
+        x: &Array2<f32>,
+        y: &Array2<f32>,
+    ) -> (Vec<Array2<f32>>, Vec<Array2<f32>>, f32) {
+        let mut w_grad: Vec<Array2<f32>> = (0..self.w.len())
+            .map(|l| Array2::<f32>::zeros(self.w[l].dim()))
             .collect();
-        let mut b_grad: Vec<Array2<f64>> = (0..self.b.len())
-            .map(|l| Array2::<f64>::zeros(self.b[l].dim()))
+        let mut b_grad: Vec<Array2<f32>> = (0..self.b.len())
+            .map(|l| Array2::<f32>::zeros(self.b[l].dim()))
             .collect();
 
         // Feed forward
-        let mut outputs = Vec::<Array2<f64>>::new();
-        let mut a = Vec::<Array2<f64>>::new();
+        let mut outputs = Vec::<Array2<f32>>::new();
+        let mut a = Vec::<Array2<f32>>::new();
         let mut next_in = x;
         for (w, b) in zip(&self.w, &self.b) {
             let z = w.dot(next_in) + b;
@@ -124,10 +124,10 @@ impl Model {
     }
 }
 
-fn sigmoid_activation<T: Dimension>(val: &Array<f64, T>) -> Array<f64, T> {
-    val.mapv(|val| 1.0 / (1.0 + f64::exp(-val)))
+fn sigmoid_activation<T: Dimension>(val: &Array<f32, T>) -> Array<f32, T> {
+    val.mapv(|val| 1.0 / (1.0 + f32::exp(-val)))
 }
 
-fn sigmoid_derivative<T: Dimension>(val: &Array<f64, T>) -> Array<f64, T> {
+fn sigmoid_derivative<T: Dimension>(val: &Array<f32, T>) -> Array<f32, T> {
     val.mapv(|sigmoid_val| sigmoid_val * (1.0 - sigmoid_val))
 }
