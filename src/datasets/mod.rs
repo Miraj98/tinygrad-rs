@@ -16,14 +16,14 @@ pub mod mnist {
     pub struct MnistData {
         raw_data: Vec<u8>,
         pub raw_labels_data: Vec<u8>,
-        pub DATA_SET_SIZE: u16,
+        pub dataset_size: u16,
     }
 
     pub fn load_data() -> MnistData {
         MnistData {
             raw_data: fs::read("./src/datasets/mnist_data/train-images-idx3-ubyte").unwrap(),
             raw_labels_data: fs::read("./src/datasets/mnist_data/train-labels-idx1-ubyte").unwrap(),
-            DATA_SET_SIZE: 60_000,
+            dataset_size: 60_000,
         }
     }
 
@@ -48,7 +48,7 @@ pub mod mnist {
         }
         
         fn size(&self) -> u16 {
-            self.DATA_SET_SIZE
+            self.dataset_size
         }
     }
 
