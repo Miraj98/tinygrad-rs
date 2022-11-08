@@ -1,371 +1,354 @@
-use ndarray::{Array2, ShapeBuilder, Dim, arr2};
-use ndarray_rand::{RandomExt, rand_distr::StandardNormal};
-use std::{cell::RefCell, collections::HashSet, rc::Weak};
+pub mod ops;
 
-pub struct Tensor {
-    t: RefCell<TensorData>,
+use ndarray::{Array2, Dim, ShapeBuilder};
+use ndarray_rand::{rand_distr::StandardNormal, RandomExt};
+use ops::{Backprop, BinaryOpType, BinaryOps, OpType, TensorConstructors, UnaryOpType, UnaryOps};
+use std::{cell::RefCell, collections::HashSet, rc::Rc};
+
+#[derive(Debug)]
+struct TensorData {
+    pub value: Array2<f32>,
+    pub grad: RefCell<Option<Array2<f32>>>,
 }
 
 #[derive(Debug)]
-pub struct TensorData {
-    pub data: Array2<f32>,
-    pub grad: Option<Array2<f32>>,
-    saved_tensors: Option<Vec<Weak<RefCell<TensorData>>>>,
-    op_type: Option<OpType>,
-    //._ctx: Option<OpCtx<'a>>,
+struct TensorContext {
+    saved_tensors: Vec<Rc<TensorCore>>,
+    op_type: OpType,
 }
 
-impl Tensor {
-    pub fn new(a: Array2<f32>) -> Tensor {
-        Tensor {
-            t: RefCell::new(TensorData {
-                data: a,
-                grad: None,
-                saved_tensors: None,
-                op_type: None,
-            }),
-        }
-    }
-
-    pub fn ones<Sh>(s: Sh) -> Tensor
-    where
-        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
-    {
-        Tensor {
-            t: RefCell::new(TensorData {
-                data: Array2::ones(s),
-                grad: None,
-                saved_tensors: None,
-                op_type: None
-            }),
-        }
-    }
-
-    pub fn zeros<Sh>(s: Sh) -> Tensor
-    where
-        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
-    {
-        Tensor {
-            t: RefCell::new(TensorData {
-                data: Array2::zeros(s),
-                grad: None,
-                saved_tensors: None,
-                op_type: None
-            }),
-        }
-    }
-
-    pub fn randn<Sh>(s: Sh) -> Tensor
-    where
-        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
-    {
-        Tensor {
-            t: RefCell::new(TensorData {
-                data: Array2::random(s, StandardNormal),
-                grad: None,
-                saved_tensors: None,
-                op_type: None,
-            }),
-        }
-    }
+#[derive(Debug)]
+pub struct TensorCore {
+    data: Rc<TensorData>,
+    ctx: Option<TensorContext>,
 }
 
-impl Tensor {
-    pub fn add(&self, x: & Tensor) -> Tensor {
-        Tensor {
-            t: RefCell::new(TensorData {
-                data: &self.data + &x.data,
-                grad: None,
-                saved_tensors: Some(vec![Weak::from(RefCell::new(self)), Weak::from(RefCell::new(x))]),
-                op_type: Some(OpType::Add),
-            }),
-        }
-    }
+pub type Tensor = Rc<TensorCore>;
 
-    pub fn mul(&self, x: &Tensor) -> Tensor {
-        Tensor {
-            t: RefCell::new(TensorData {
-                data: &self.data * &x.data,
-                grad: None,
-                saved_tensors: Some(vec![Weak::from(RefCell::new(self)), Weak::from(RefCell::new(x))]),
-                op_type: Some(OpType::Mul),
-             }),
-        }
-    }
-
-    pub fn sub(&self, x: &Tensor) -> Tensor {
-        Tensor {
-            t: RefCell::new(TensorData {
-                data: &self.data - &x.data,
+impl TensorConstructors for TensorCore {
+    fn new(a: Array2<f32>) -> Tensor {
+        Rc::new(TensorCore {
+            data: Rc::new(TensorData {
+                value: a,
                 grad: RefCell::new(None),
-                saved_tensors: Some(vec![Weak::from(RefCell::new(self)), Weak::from(RefCell::new(x))]),
-                op_type: Some(OpType::Sub),
-            })
-        }
+            }),
+            ctx: None,
+        })
     }
 
-    pub fn matmul(&self, x: &Tensor) -> Tensor {
-        Tensor {
-            t: RefCell::new(TensorData {
-                data: (&self.data).dot(&x.data),
-                grad: None,
-                saved_tensors: Some(vec![Weak::from(RefCell::new(self)), Weak::from(RefCell::new(x))]),
-                op_type: Some(OpType::Matmul),
-            })
-        }
+    fn ones<Sh>(shape: Sh) -> Tensor
+    where
+        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
+    {
+        Rc::new(TensorCore {
+            data: Rc::new(TensorData {
+                value: Array2::ones(shape),
+                grad: RefCell::new(None),
+            }),
+            ctx: None,
+        })
     }
 
-    pub fn mean(&self) -> Tensor {
-        let mean_val = self.data.mean().unwrap();
-        Tensor {
-            t: RefCell::new(TensorData {
-                data: arr2(&[[mean_val]]),
-                grad: (None),
-                saved_tensors: Some(vec![Weak::from(RefCell::new(self))]),
-                op_type: Some(OpType::Mean),
-            })
-        }
+    fn zeros<Sh>(shape: Sh) -> Tensor
+    where
+        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
+    {
+        Rc::new(TensorCore {
+            data: Rc::new(TensorData {
+                value: Array2::zeros(shape),
+                grad: RefCell::new(None),
+            }),
+            ctx: None,
+        })
     }
 
-    pub fn sum(&self) -> Tensor {
-        let sum_val = self.data.mean().unwrap();
-        Tensor {
-            t: RefCell::new(TensorData {
-                data: arr2(&[[sum_val]]),
-                grad: (None),
-                saved_tensors: Some(vec![Weak::from(RefCell::new(self))]),
-                op_type: Some(OpType::Sum),
-            })
-        }
+    fn fill<Sh>(shape: Sh, x: f32) -> Tensor
+    where
+        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
+    {
+        Rc::new(TensorCore {
+            data: Rc::new(TensorData {
+                value: Array2::ones(shape) * x,
+                grad: RefCell::new(None),
+            }),
+            ctx: None,
+        })
     }
 
-    pub fn sigmoid(&self) -> Tensor {
-        Tensor {
-            t: RefCell::new(TensorData {
-                data: self.data.mapv(|val| 1.0 / (1.0 + f32::exp(-val))),
-                grad: (None),
-                saved_tensors: Some(vec![Weak::from(RefCell::new(self))]),
-                op_type: Some(OpType::Sigmoid),
-            })
-        }
+    fn randn<Sh>(shape: Sh) -> Tensor
+    where
+        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
+    {
+        Rc::new(TensorCore {
+            data: Rc::new(TensorData {
+                value: Array2::random(shape, StandardNormal),
+                grad: RefCell::new(None),
+            }),
+            ctx: None,
+        })
+    }
+}
+
+impl BinaryOps for Tensor {
+    fn add(&self, x: &Tensor) -> Tensor {
+        Rc::new(TensorCore {
+            data: Rc::new(TensorData {
+                value: &self.data.value + &x.data.value,
+                grad: RefCell::new(None),
+            }),
+            ctx: Some(TensorContext {
+                saved_tensors: vec![Rc::clone(self), Rc::clone(x)],
+                op_type: OpType::BinaryOp(BinaryOpType::Add),
+            }),
+        })
     }
 
-    pub fn sq(&self) -> Tensor {
-        Tensor {
-            t: RefCell::new(TensorData {
-                data: self.t.borrow().data.mapv(|val| val * val),
-                grad: (None),
-                saved_tensors: Some(vec![Weak::from(RefCell::new(self.t.borrow()))]),
-                op_type: Some(OpType::Square),
-            })
-        }
+    fn sub(&self, x: &Tensor) -> Tensor {
+        Rc::new(TensorCore {
+            data: Rc::new(TensorData {
+                value: &self.data.value - &x.data.value,
+                grad: RefCell::new(None),
+            }),
+            ctx: Some(TensorContext {
+                saved_tensors: vec![Rc::clone(self), Rc::clone(x)],
+                op_type: OpType::BinaryOp(BinaryOpType::Sub),
+            }),
+        })
     }
 
-    pub fn backward(&self) {
-        let mut visited = HashSet::<*const Tensor>::new();
-        let mut added = HashSet::<*const Tensor>::new();
-        let mut topo = Vec::<&Tensor>::new();
-        let mut work_stack = Vec::<&Tensor>::new();
+    fn mul(&self, x: &Tensor) -> Tensor {
+        Rc::new(TensorCore {
+            data: Rc::new(TensorData {
+                value: &self.data.value * &x.data.value,
+                grad: RefCell::new(None),
+            }),
+            ctx: Some(TensorContext {
+                saved_tensors: vec![Rc::clone(self), Rc::clone(x)],
+                op_type: OpType::BinaryOp(BinaryOpType::Mul),
+            }),
+        })
+    }
 
-        work_stack.push(self);
+    fn matmul(&self, x: &Tensor) -> Tensor {
+        Rc::new(TensorCore {
+            data: Rc::new(TensorData {
+                value: (&self.data.value).dot(&x.data.value),
+                grad: RefCell::new(None),
+            }),
+            ctx: Some(TensorContext {
+                saved_tensors: vec![Rc::clone(self), Rc::clone(x)],
+                op_type: OpType::BinaryOp(BinaryOpType::Matmul),
+            }),
+        })
+    }
+}
+
+impl Backprop for Tensor {
+    fn backward(&self) {
+        let mut visited = HashSet::<*const TensorCore>::new();
+        let mut added = HashSet::<*const TensorCore>::new();
+        let mut work_stack = Vec::<*const TensorCore>::new();
+
+        let mut topo = Vec::<*const TensorCore>::new();
+
+        work_stack.push(self.as_ref());
 
         while work_stack.len() > 0 {
             if let Some(t) = work_stack.pop() {
-                let t_ptr = t as *const Tensor;
-                if visited.contains(&t_ptr) {
-                    if !added.contains(&t_ptr) {
+                if visited.contains(&t) {
+                    if !added.contains(&t) {
                         topo.push(t);
-                        added.insert(t_ptr);
+                        added.insert(t);
                     }
                 } else {
-                    visited.insert(t_ptr);
-                    if let Some(ctx) = &t._ctx {
-                        if ctx.inputs.len() == 0 {
-                            if !added.contains(&t_ptr) {
-                                topo.push(t);
-                                added.insert(t_ptr);
-                            }
-                        } else {
-                            work_stack.push(t);
-                            for _i in &ctx.inputs {
-                                let _t = *(*_i).borrow();
-                                let _t_ptr = _t as *const Tensor;
-                                if !visited.contains(&_t_ptr) {
-                                    work_stack.push(_t);
+                    visited.insert(t);
+                    unsafe {
+                        if let Some(ctx) = &(*t).ctx {
+                            if ctx.saved_tensors.len() == 0 {
+                                if !added.contains(&t) {
+                                    topo.push(t);
+                                    added.insert(t);
+                                }
+                            } else {
+                                work_stack.push(t);
+                                for st in &ctx.saved_tensors {
+                                    let st_ptr = st.as_ref() as *const TensorCore;
+                                    if !visited.contains(&st_ptr) {
+                                        work_stack.push(st_ptr);
+                                    }
                                 }
                             }
-                        }
-                    } else {
-                        if !added.contains(&t_ptr) {
-                            topo.push(t);
-                            added.insert(t_ptr);
-                        }
-                    };
+                        } else {
+                            if !added.contains(&t) {
+                                topo.push(t);
+                                added.insert(t);
+                            }
+                        };
+                    }
                 }
             }
         }
 
         topo.reverse();
 
-        let arr = Array2::<f32>::ones(self.data.dim());
-        for t in topo {
-            match &t._ctx {
-                Some(op_node) => {
-                    if let Some(grad) = &*t.grad.borrow() {
-                        op_node.backward(&grad);
-                    } else {
-                        op_node.backward(&arr);
+        let arr = Array2::<f32>::ones(self.data.value.dim());
+        for i in &topo {
+            unsafe {
+                match (**i).data.as_ref().grad.borrow().as_ref() {
+                    Some(g) => {
+                        (**i)._backward(g)
+                    }
+                    None => {
+                        (**i)._backward(&arr)
                     }
                 }
-                None => {}
+            }
+            unsafe {
+                println!("{:?}", (**i).data.value);
             }
         }
-        let mut g = self.grad.borrow_mut();
-        *g = Some(arr);
+
+        println!("{:?}", topo);
     }
 }
 
-#[derive(Debug)]
-enum OpType {
-    Add,
-    Sub,
-    Mul,
-    Matmul,
-    Mean,
-    Square,
-    Sum,
-    Sigmoid
-}
-
-impl<'a> OpCtx<'a> {
-    pub fn backward(&self, incoming_grad: &Array2<f32>) {
-        match self.op_type {
-            OpType::Add => {
-                for i in 0..2 {
-                    let mut ref_grad = self.inputs[i].borrow().grad.borrow_mut();
-                    let dref_grad = ref_grad.as_ref();
-                    match dref_grad {
-                        Some(grad) => {
-                            *ref_grad = Some(grad + incoming_grad);
-                        }
-                        None => {
-                            *ref_grad = Some(incoming_grad.to_owned());
+impl TensorCore {
+    fn _backward(&self, incoming_grad: &Array2<f32>) {
+        if let Some(ctx) = &self.ctx {
+            match ctx.op_type {
+                OpType::BinaryOp(BinaryOpType::Add) => {
+                    for i in 0..2 {
+                        let mut t = ctx.saved_tensors[i].as_ref().data.grad.borrow_mut();
+                        let grad_optn = t.as_ref();
+                        if let Some(g) = grad_optn {
+                            *t = Some(g + incoming_grad);
+                        } else {
+                            *t = Some(incoming_grad.to_owned());
                         }
                     }
                 }
-            }
-            OpType::Sub => {
-                for i in 0..2 {
-                    let mut ref_grad = self.inputs[i].borrow().grad.borrow_mut();
-                    let dref_grad = ref_grad.as_ref();
-                    match dref_grad {
-                        Some(grad) => {
-                            *ref_grad = Some(grad - incoming_grad);
+                OpType::BinaryOp(BinaryOpType::Matmul) => {
+                    let mut t0 = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
+                    let mut t1 = ctx.saved_tensors[1].as_ref().data.grad.borrow_mut();
+                    let grad_optn0 = t0.as_ref();
+                    let grad_optn1 = t1.as_ref();
+
+                    if let Some(g) = grad_optn0 {
+                        *t0 = Some(
+                            g + incoming_grad.dot(&ctx.saved_tensors[1].as_ref().data.value.t()),
+                        );
+                    } else {
+                        *t0 =
+                            Some(incoming_grad.dot(&ctx.saved_tensors[1].as_ref().data.value.t()));
+                    }
+
+                    if let Some(g) = grad_optn1 {
+                        *t1 = Some(
+                            g + ctx.saved_tensors[1]
+                                .as_ref()
+                                .data
+                                .value
+                                .t()
+                                .dot(incoming_grad),
+                        );
+                    } else {
+                        *t1 = Some(
+                            ctx.saved_tensors[1]
+                                .as_ref()
+                                .data
+                                .value
+                                .t()
+                                .dot(incoming_grad),
+                        );
+                    }
+                }
+                OpType::BinaryOp(BinaryOpType::Mul) => {
+                    let mut t0 = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
+                    let mut t1 = ctx.saved_tensors[1].as_ref().data.grad.borrow_mut();
+                    let grad_optn0 = t0.as_ref();
+                    let grad_optn1 = t1.as_ref();
+
+                    if let Some(g) = grad_optn0 {
+                        *t0 = Some(g + incoming_grad * &ctx.saved_tensors[1].as_ref().data.value);
+                    } else {
+                        *t0 = Some(incoming_grad * &ctx.saved_tensors[1].as_ref().data.value);
+                    }
+
+                    if let Some(g) = grad_optn1 {
+                        *t1 = Some(g + incoming_grad * &ctx.saved_tensors[0].as_ref().data.value);
+                    } else {
+                        *t1 = Some(incoming_grad * &ctx.saved_tensors[0].as_ref().data.value);
+                    }
+                }
+                OpType::BinaryOp(BinaryOpType::Sub) => {
+                    for i in 0..2 {
+                        let mut t = ctx.saved_tensors[i].as_ref().data.grad.borrow_mut();
+                        let grad_optn = t.as_ref();
+                        if let Some(g) = grad_optn {
+                            *t = Some(g - incoming_grad);
+                        } else {
+                            *t = Some((-incoming_grad).to_owned());
                         }
-                        None => {
-                            *ref_grad = Some(-incoming_grad.to_owned());
-                        }
-                    };
+                    }
+                }
+                OpType::UnaryOp(UnaryOpType::Sigmoid) => {
+                    let mut t = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
+                    let grad_optn = t.as_ref();
+                    if let Some(g) = grad_optn {
+                        *t = Some(
+                            g + incoming_grad
+                                * &ctx.saved_tensors[0]
+                                    .as_ref()
+                                    .data
+                                    .value
+                                    .mapv(|f| f * (1. - f)),
+                        );
+                    } else {
+                        *t = Some(
+                            incoming_grad
+                                * &ctx.saved_tensors[0]
+                                    .as_ref()
+                                    .data
+                                    .value
+                                    .mapv(|f| f * (1. - f)),
+                        );
+                    }
+                }
+                OpType::UnaryOp(UnaryOpType::Mean) => {
+                    let mut t = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
+                    let grad_optn = t.as_ref();
+                    if let Some(g) = grad_optn {
+                        *t = Some(
+                            g + incoming_grad
+                                / ctx.saved_tensors[0].as_ref().data.value.len() as f32,
+                        );
+                    } else {
+                        *t = Some(
+                            incoming_grad / ctx.saved_tensors[0].as_ref().data.value.len() as f32,
+                        );
+                    }
+                }
+                OpType::UnaryOp(UnaryOpType::Square) => {
+                    let mut t = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
+                    let grad_optn = t.as_ref();
+                    if let Some(g) = grad_optn {
+                        *t = Some(
+                            g + incoming_grad * 2.0 * &ctx.saved_tensors[0].as_ref().data.value,
+                        );
+                    } else {
+                        *t = Some(incoming_grad * 2.0 * &ctx.saved_tensors[0].as_ref().data.value);
+                    }
+                }
+                OpType::UnaryOp(UnaryOpType::Sum) => {
+                    let mut t = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
+                    let grad_optn = t.as_ref();
+                    if let Some(g) = grad_optn {
+                        *t = Some(g + incoming_grad);
+                    } else {
+                        *t = Some(incoming_grad.to_owned());
+                    }
                 }
             }
-            OpType::Mul => {
-                let mut ref_grad_0 = self.inputs[0].borrow().grad.borrow_mut();
-                let dref_grad_0 = ref_grad_0.as_ref();
-                match dref_grad_0 {
-                    Some(g) => {
-                        *ref_grad_0 = Some(g + incoming_grad * &self.inputs[1].borrow().data);
-                    }
-                    None => {
-                        *ref_grad_0 = Some(incoming_grad * &self.inputs[1].borrow().data);
-                    }
-                };
-
-                let mut ref_grad_1 = self.inputs[1].borrow().grad.borrow_mut();
-                let dref_grad_1 = ref_grad_1.as_ref();
-                match dref_grad_1 {
-                    Some(g) => {
-                        *ref_grad_1 = Some(g + incoming_grad * &self.inputs[0].borrow().data);
-                    }
-                    None => {
-                        *ref_grad_1 = Some(incoming_grad * &self.inputs[0].borrow().data);
-                    }
-                };
-            }
-            OpType::Matmul => {
-                let mut ref_grad_0 = self.inputs[0].borrow().grad.borrow_mut();
-                let dref_grad_0 = ref_grad_0.as_ref();
-                match dref_grad_0 {
-                    Some(g) => {
-                        *ref_grad_0 =
-                            Some(g + incoming_grad.dot(&self.inputs[1].borrow().data.t()));
-                    }
-                    None => {
-                        *ref_grad_0 = Some(incoming_grad.dot(&self.inputs[1].borrow().data.t()));
-                    }
-                };
-
-                let mut ref_grad_1 = self.inputs[1].borrow().grad.borrow_mut();
-                let dref_grad_1 = ref_grad_1.as_ref();
-                match dref_grad_1 {
-                    Some(g) => {
-                        *ref_grad_1 =
-                            Some(g + &self.inputs[0].borrow().data.t().dot(incoming_grad));
-                    }
-                    None => {
-                        *ref_grad_1 = Some(self.inputs[0].borrow().data.t().dot(incoming_grad));
-                    }
-                };
-            }
-            OpType::Sigmoid => {
-                let mut ref_grad = self.inputs[0].borrow().grad.borrow_mut();
-                let dref_grad = ref_grad.as_ref();
-                match dref_grad {
-                    Some(g) => {
-                        *ref_grad = Some(g + incoming_grad * &self.inputs[0].borrow().data.mapv(|f| f * (1. - f)));
-                    }
-                    None => {
-                        *ref_grad = Some(incoming_grad * self.inputs[0].borrow().data.mapv(|f| f * (1. - f)));
-                    }
-                };
-            }
-            OpType::Mean => {
-                let mut ref_grad = self.inputs[0].borrow().grad.borrow_mut();
-                let dref_grad = ref_grad.as_ref();
-                match dref_grad {
-                    Some(g) => {
-                        let input = self.inputs[0].borrow();
-                        *ref_grad = Some(g + incoming_grad / input.data.len() as f32);
-                    }
-                    None => {
-                        let input = self.inputs[0].borrow();
-                        *ref_grad = Some(incoming_grad / input.data.len() as f32);
-                    }
-                };
-            }
-            OpType::Sum => {
-                let mut ref_grad = self.inputs[0].borrow().grad.borrow_mut();
-                let dref_grad = ref_grad.as_ref();
-                match dref_grad {
-                    Some(g) => {
-                        *ref_grad = Some(g + incoming_grad);
-                    }
-                    None => {
-                        *ref_grad = Some(incoming_grad.to_owned());
-                    }
-                };
-            }
-            OpType::Square => {
-                let mut ref_grad = self.inputs[0].borrow().grad.borrow_mut();
-                let dref_grad = ref_grad.as_ref();
-                match dref_grad {
-                    Some(g) => {
-                        *ref_grad = Some(g + 2.0 * &self.inputs[0].borrow().data * incoming_grad);
-                    }
-                    None => {
-                        *ref_grad = Some(2.0 * incoming_grad);
-                    }
-                };
-            }
-        };
+        }
     }
 }
