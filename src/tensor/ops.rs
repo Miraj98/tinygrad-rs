@@ -39,14 +39,16 @@ pub trait BinaryOps {
 }
 
 pub trait UnaryOps {
-    /*
     fn sigmoid(&self) -> Tensor;
+    fn square(&self) -> Tensor;
+}
+
+pub trait ReduceOps {
     fn sum(&self) -> Tensor;
     fn mean(&self) -> Tensor;
-    fn square(&self) -> Tensor;
-    */
 }
 
 pub trait Backprop {
     fn backward(&self);
+    fn zero_grad(&self);
 }
