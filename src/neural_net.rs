@@ -77,12 +77,12 @@ impl<T: Dataloader> Model<T> {
         &mut self,
         batch_size: usize,
         batch_idx: usize,
-        lr: f32,
+        lr: f64,
     )  {
-        let mut w_grads_batch_aggregate: Vec<Array2<f32>> = (0..self.w.len())
+        let mut w_grads_batch_aggregate: Vec<Array2<f64>> = (0..self.w.len())
             .map(|l| Array2::zeros(self.w[l].data.value.borrow().dim()))
             .collect();
-        let mut b_grads_batch_aggregate: Vec<Array2<f32>> = (0..self.b.len())
+        let mut b_grads_batch_aggregate: Vec<Array2<f64>> = (0..self.b.len())
             .map(|l| Array2::zeros(self.b[l].data.value.borrow().dim()))
             .collect();
 
@@ -105,19 +105,19 @@ impl<T: Dataloader> Model<T> {
 
             loss.zero_grad();
         }
-        // let mut w = &(self).w[0].data.value.borrow_mut() as &Array2<f32>;
+        // let mut w = &(self).w[0].data.value.borrow_mut() as &Array2<f64>;
 
         // println!("Batch complete {:#?}", w);
-        // println!("Batch complete {:#?}", w - (lr * (&w_grads_batch_aggregate[0] / batch_size as f32)));
+        // println!("Batch complete {:#?}", w - (lr * (&w_grads_batch_aggregate[0] / batch_size as f64)));
         // unsafe {
         //     let mut new_w = (*self.w[0].data.value.as_ptr()).clone();
         //     let mut new_b = (*self.w[0].data.value.as_ptr()).clone();
 
-        //     let w = &self.w[0].data.value.borrow() as &Array2<f32>;
-        //     new_w = w - (lr * (&w_grads_batch_aggregate[0] / batch_size as f32));
+        //     let w = &self.w[0].data.value.borrow() as &Array2<f64>;
+        //     new_w = w - (lr * (&w_grads_batch_aggregate[0] / batch_size as f64));
 
-        //     let b = &self.b[0].data.value.borrow() as &Array2<f32>;
-        //     new_b = b - (lr * (&b_grads_batch_aggregate[0] / batch_size as f32));
+        //     let b = &self.b[0].data.value.borrow() as &Array2<f64>;
+        //     new_b = b - (lr * (&b_grads_batch_aggregate[0] / batch_size as f64));
 
         //     println!("{:?}", new_w);
 
@@ -127,20 +127,20 @@ impl<T: Dataloader> Model<T> {
         for i in 0..self.w.len() {
             let mut w = self.w[i].data.value.borrow_mut();
             println!("Before {:?}", w);
-            *w = &w as &Array2<f32> - (lr * (&w_grads_batch_aggregate[i] / batch_size as f32));
+            *w = &w as &Array2<f64> - (lr * (&w_grads_batch_aggregate[i] / batch_size as f64));
             println!("After {:?}", w);
 
             let mut b = self.b[i].data.value.borrow_mut();
-            *b = &b as &Array2<f32> - (lr * (&b_grads_batch_aggregate[i] / batch_size as f32));
+            *b = &b as &Array2<f64> - (lr * (&b_grads_batch_aggregate[i] / batch_size as f64));
         }
     }
 
     pub fn feed_forward(&self, input: &Tensor) -> Tensor {
-        let mut a = Array2::<f32>::zeros((1, 1));
-        let mut next_in = &input.data.value.borrow() as &Array2<f32>;
+        let mut a = Array2::<f64>::zeros((1, 1));
+        let mut next_in = &input.data.value.borrow() as &Array2<f64>;
         for (w, b) in zip(&self.w, &self.b) {
-            let z = (&w.data.value.borrow() as &Array2<f32>).dot(next_in)
-                + &b.data.value.borrow() as &Array2<f32>;
+            let z = (&w.data.value.borrow() as &Array2<f64>).dot(next_in)
+                + &b.data.value.borrow() as &Array2<f64>;
             a = sigmoid_activation(&z);
             next_in = &a;
         }
@@ -171,6 +171,6 @@ impl<T: Dataloader> Model<T> {
     }
 }
 
-fn sigmoid_activation<T: Dimension>(val: &Array<f32, T>) -> Array<f32, T> {
-    val.mapv(|val| 1.0 / (1.0 + f32::exp(-val)))
+fn sigmoid_activation<T: Dimension>(val: &Array<f64, T>) -> Array<f64, T> {
+    val.mapv(|val| 1.0 / (1.0 + f64::exp(-val)))
 }

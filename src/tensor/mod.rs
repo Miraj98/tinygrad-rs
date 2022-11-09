@@ -10,8 +10,8 @@ use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
 #[derive(Debug)]
 pub struct TensorData {
-    pub value: RefCell<Array2<f32>>,
-    pub grad: RefCell<Option<Array2<f32>>>,
+    pub value: RefCell<Array2<f64>>,
+    pub grad: RefCell<Option<Array2<f64>>>,
 }
 
 #[derive(Debug)]
@@ -29,7 +29,7 @@ pub struct TensorCore {
 pub type Tensor = Rc<TensorCore>;
 
 impl TensorConstructors for TensorCore {
-    fn new(a: Array2<f32>) -> Tensor {
+    fn new(a: Array2<f64>) -> Tensor {
         Rc::new(TensorCore {
             data: TensorData {
                 value: RefCell::new(a),
@@ -65,7 +65,7 @@ impl TensorConstructors for TensorCore {
         })
     }
 
-    fn fill<Sh>(shape: Sh, x: f32) -> Tensor
+    fn fill<Sh>(shape: Sh, x: f64) -> Tensor
     where
         Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
     {
@@ -94,8 +94,8 @@ impl TensorConstructors for TensorCore {
 
 impl BinaryOps for Tensor {
     fn add(&self, x: &Tensor) -> Tensor {
-        let _s = &self.data.value.borrow() as &Array2<f32>;
-        let _x = &x.data.value.borrow() as &Array2<f32>;
+        let _s = &self.data.value.borrow() as &Array2<f64>;
+        let _x = &x.data.value.borrow() as &Array2<f64>;
 
         Rc::new(TensorCore {
             data: TensorData {
@@ -110,8 +110,8 @@ impl BinaryOps for Tensor {
     }
 
     fn sub(&self, x: &Tensor) -> Tensor {
-        let _s = &self.data.value.borrow() as &Array2<f32>;
-        let _x = &x.data.value.borrow() as &Array2<f32>;
+        let _s = &self.data.value.borrow() as &Array2<f64>;
+        let _x = &x.data.value.borrow() as &Array2<f64>;
 
         Rc::new(TensorCore {
             data: TensorData {
@@ -126,8 +126,8 @@ impl BinaryOps for Tensor {
     }
 
     fn mul(&self, x: &Tensor) -> Tensor {
-        let _s = &self.data.value.borrow() as &Array2<f32>;
-        let _x = &x.data.value.borrow() as &Array2<f32>;
+        let _s = &self.data.value.borrow() as &Array2<f64>;
+        let _x = &x.data.value.borrow() as &Array2<f64>;
 
         Rc::new(TensorCore {
             data: TensorData {
@@ -142,8 +142,8 @@ impl BinaryOps for Tensor {
     }
 
     fn matmul(&self, x: &Tensor) -> Tensor {
-        let _s = &self.data.value.borrow() as &Array2<f32>;
-        let _x = &x.data.value.borrow() as &Array2<f32>;
+        let _s = &self.data.value.borrow() as &Array2<f64>;
+        let _x = &x.data.value.borrow() as &Array2<f64>;
 
         Rc::new(TensorCore {
             data: TensorData {
@@ -164,7 +164,7 @@ impl UnaryOps for Tensor {
             .data
             .value
             .borrow()
-            .mapv(|val| 1.0 / (1.0 + f32::exp(-val)));
+            .mapv(|val| 1.0 / (1.0 + f64::exp(-val)));
         Rc::new(TensorCore {
             data: TensorData {
                 value: RefCell::new(a),
@@ -272,7 +272,7 @@ impl Backprop for Tensor {
 
         topo.reverse();
 
-        let arr = Array2::<f32>::ones(self.data.value.borrow().dim());
+        let arr = Array2::<f64>::ones(self.data.value.borrow().dim());
         for i in &topo {
             unsafe {
                 match (**i).data.grad.borrow().as_ref() {
@@ -341,7 +341,7 @@ impl Backprop for Tensor {
 }
 
 impl TensorCore {
-    fn _backward(&self, incoming_grad: &Array2<f32>) {
+    fn _backward(&self, incoming_grad: &Array2<f64>) {
         if let Some(ctx) = &self.ctx {
             match ctx.op_type {
                 OpType::BinaryOp(BinaryOpType::Add) => {
@@ -405,13 +405,13 @@ impl TensorCore {
                         *t0 = Some(
                             g + incoming_grad
                                 * &ctx.saved_tensors[1].as_ref().data.value.borrow()
-                                    as &Array2<f32>,
+                                    as &Array2<f64>,
                         );
                     } else {
                         *t0 = Some(
                             incoming_grad
                                 * &ctx.saved_tensors[1].as_ref().data.value.borrow()
-                                    as &Array2<f32>,
+                                    as &Array2<f64>,
                         );
                     }
 
@@ -419,13 +419,13 @@ impl TensorCore {
                         *t1 = Some(
                             g + incoming_grad
                                 * &ctx.saved_tensors[0].as_ref().data.value.borrow()
-                                    as &Array2<f32>,
+                                    as &Array2<f64>,
                         );
                     } else {
                         *t1 = Some(
                             incoming_grad
                                 * &ctx.saved_tensors[0].as_ref().data.value.borrow()
-                                    as &Array2<f32>,
+                                    as &Array2<f64>,
                         );
                     }
                 }
@@ -471,12 +471,12 @@ impl TensorCore {
                     if let Some(g) = grad_optn {
                         *t = Some(
                             g + incoming_grad
-                                / ctx.saved_tensors[0].as_ref().data.value.borrow().len() as f32,
+                                / ctx.saved_tensors[0].as_ref().data.value.borrow().len() as f64,
                         );
                     } else {
                         *t = Some(
                             incoming_grad
-                                / ctx.saved_tensors[0].as_ref().data.value.borrow().len() as f32,
+                                / ctx.saved_tensors[0].as_ref().data.value.borrow().len() as f64,
                         );
                     }
                 }
@@ -488,14 +488,14 @@ impl TensorCore {
                             g + incoming_grad
                                 * 2.0
                                 * &ctx.saved_tensors[0].as_ref().data.value.borrow()
-                                    as &Array2<f32>,
+                                    as &Array2<f64>,
                         );
                     } else {
                         *t = Some(
                             incoming_grad
                                 * 2.0
                                 * &ctx.saved_tensors[0].as_ref().data.value.borrow()
-                                    as &Array2<f32>,
+                                    as &Array2<f64>,
                         );
                     }
                 }
@@ -515,8 +515,25 @@ impl TensorCore {
 
 #[cfg(test)]
 mod tests {
+    use ndarray::{arr2, array, Array2};
+    use super::{
+        ops::{BinaryOps, TensorConstructors},
+        TensorCore,
+    };
+
     #[test]
-    fn hello() {
-        eprintln!("Stuff")
+    fn matmul_test() {
+        let a = arr2(&[[2.0, 3.0], [4.0, 5.0]]);
+        let b = arr2(&[[15.0, 8.0], [10.0, 71.0]]);
+
+        let a_tensor = TensorCore::new(a);
+        let b_tensor = TensorCore::new(b);
+        let c = a_tensor.matmul(&b_tensor);
+        let d = &c.data.value.borrow() as &Array2<f64>;
+
+        assert_eq!(d, array![[60., 229.], [110., 387.]]);
+        assert_eq!(c.ctx.as_ref().unwrap().saved_tensors.len(), 2);
+        assert_eq!(&c.ctx.as_ref().unwrap().saved_tensors[0].data.value.borrow() as &Array2<f64>, array![[2.0, 3.0], [4.0, 5.0]]);
+        assert_eq!(&c.ctx.as_ref().unwrap().saved_tensors[1].data.value.borrow() as &Array2<f64>, array![[15.0, 8.0], [10.0, 71.0]]);
     }
 }

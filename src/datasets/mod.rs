@@ -1,8 +1,8 @@
 use ndarray::Array2;
 
 pub trait Dataloader {
-    fn get_by_idx(&self, idx: usize) -> (Array2<f32>, Array2<f32>);
-    fn get_batch(&self, batch_size: usize, batch_idx: usize) -> Vec<(Array2<f32>, Array2<f32>)>;
+    fn get_by_idx(&self, idx: usize) -> (Array2<f64>, Array2<f64>);
+    fn get_batch(&self, batch_size: usize, batch_idx: usize) -> Vec<(Array2<f64>, Array2<f64>)>;
     fn size(&self) -> u16;
 }
 
@@ -30,12 +30,12 @@ pub mod mnist {
     }
 
     impl Dataloader for MnistData {
-        fn get_by_idx(&self, idx: usize) -> (Array2<f32>, Array2<f32>) {
+        fn get_by_idx(&self, idx: usize) -> (Array2<f64>, Array2<f64>) {
             return (self.get_image_nn_input(idx), self.get_image_label_vector(idx))
         }
         
-        fn get_batch(&self, batch_size: usize, batch_idx: usize) -> Vec<(Array2<f32>, Array2<f32>)> {
-            let mut b = Vec::<(Array2<f32>, Array2<f32>)>::new();
+        fn get_batch(&self, batch_size: usize, batch_idx: usize) -> Vec<(Array2<f64>, Array2<f64>)> {
+            let mut b = Vec::<(Array2<f64>, Array2<f64>)>::new();
 
             if self.size() % batch_size as u16 != 0 {
                 panic!("Batch size must be a whole factor of the total dataset size")
@@ -63,17 +63,17 @@ pub mod mnist {
             self.raw_labels_data[idx + 8]
         }
 
-        pub fn get_image_label_vector(&self, idx: usize) -> Array2<f32> {
-            let mut out = Array2::<f32>::zeros((10, 1));
+        pub fn get_image_label_vector(&self, idx: usize) -> Array2<f64> {
+            let mut out = Array2::<f64>::zeros((10, 1));
             out[(self.get_image_label(idx) as usize, 0)] = 1.;
             return out;
         }
 
-        pub fn get_image_nn_input(&self, idx: usize) -> Array2<f32> {
+        pub fn get_image_nn_input(&self, idx: usize) -> Array2<f64> {
             let buf = self.get_img_buffer(idx).to_vec();
             Array2::from_shape_vec((PX_SIZE * PX_SIZE, 1), buf)
                 .unwrap()
-                .mapv(|val| (val as f32 / 256.))
+                .mapv(|val| (val as f64 / 256.))
         }
 
         pub fn save_as_png(&self, idx: usize) {
