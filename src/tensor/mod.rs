@@ -21,7 +21,7 @@ pub struct TensorContext {
 
 #[derive(Debug)]
 pub struct TensorCore {
-    pub data: Rc<TensorData>,
+    pub data: TensorData,
     pub ctx: Option<TensorContext>,
 }
 
@@ -30,10 +30,10 @@ pub type Tensor = Rc<TensorCore>;
 impl TensorConstructors for TensorCore {
     fn new(a: Array2<f32>) -> Tensor {
         Rc::new(TensorCore {
-            data: Rc::new(TensorData {
+            data: TensorData {
                 value: RefCell::new(a),
                 grad: RefCell::new(None),
-            }),
+            },
             ctx: None,
         })
     }
@@ -43,10 +43,10 @@ impl TensorConstructors for TensorCore {
         Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
     {
         Rc::new(TensorCore {
-            data: Rc::new(TensorData {
+            data: TensorData {
                 value: RefCell::new(Array2::ones(shape)),
                 grad: RefCell::new(None),
-            }),
+            },
             ctx: None,
         })
     }
@@ -56,10 +56,10 @@ impl TensorConstructors for TensorCore {
         Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
     {
         Rc::new(TensorCore {
-            data: Rc::new(TensorData {
+            data: TensorData {
                 value: RefCell::new(Array2::zeros(shape)),
                 grad: RefCell::new(None),
-            }),
+            },
             ctx: None,
         })
     }
@@ -69,10 +69,10 @@ impl TensorConstructors for TensorCore {
         Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
     {
         Rc::new(TensorCore {
-            data: Rc::new(TensorData {
+            data: TensorData {
                 value: RefCell::new(Array2::ones(shape) * x),
                 grad: RefCell::new(None),
-            }),
+            },
             ctx: None,
         })
     }
@@ -82,10 +82,10 @@ impl TensorConstructors for TensorCore {
         Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
     {
         Rc::new(TensorCore {
-            data: Rc::new(TensorData {
+            data: TensorData {
                 value: RefCell::new(Array2::random(shape, StandardNormal)),
                 grad: RefCell::new(None),
-            }),
+            },
             ctx: None,
         })
     }
@@ -93,14 +93,14 @@ impl TensorConstructors for TensorCore {
 
 impl BinaryOps for Tensor {
     fn add(&self, x: &Tensor) -> Tensor {
-        let _s = &self.data.as_ref().value.borrow() as &Array2<f32>;
-        let _x = &x.data.as_ref().value.borrow() as &Array2<f32>;
+        let _s = &self.data.value.borrow() as &Array2<f32>;
+        let _x = &x.data.value.borrow() as &Array2<f32>;
 
         Rc::new(TensorCore {
-            data: Rc::new(TensorData {
+            data:TensorData {
                 value: RefCell::new(_s + _x),
                 grad: RefCell::new(None),
-            }),
+            },
             ctx: Some(TensorContext {
                 saved_tensors: vec![Rc::clone(self), Rc::clone(x)],
                 op_type: OpType::BinaryOp(BinaryOpType::Add),
@@ -109,14 +109,14 @@ impl BinaryOps for Tensor {
     }
 
     fn sub(&self, x: &Tensor) -> Tensor {
-        let _s = &self.data.as_ref().value.borrow() as &Array2<f32>;
-        let _x = &x.data.as_ref().value.borrow() as &Array2<f32>;
+        let _s = &self.data.value.borrow() as &Array2<f32>;
+        let _x = &x.data.value.borrow() as &Array2<f32>;
 
         Rc::new(TensorCore {
-            data: Rc::new(TensorData {
+            data: TensorData {
                 value: RefCell::new(_s - _x),
                 grad: RefCell::new(None),
-            }),
+            },
             ctx: Some(TensorContext {
                 saved_tensors: vec![Rc::clone(self), Rc::clone(x)],
                 op_type: OpType::BinaryOp(BinaryOpType::Sub),
@@ -125,14 +125,14 @@ impl BinaryOps for Tensor {
     }
 
     fn mul(&self, x: &Tensor) -> Tensor {
-        let _s = &self.data.as_ref().value.borrow() as &Array2<f32>;
-        let _x = &x.data.as_ref().value.borrow() as &Array2<f32>;
+        let _s = &self.data.value.borrow() as &Array2<f32>;
+        let _x = &x.data.value.borrow() as &Array2<f32>;
 
         Rc::new(TensorCore {
-            data: Rc::new(TensorData {
+            data: TensorData {
                 value: RefCell::new(_s * _x),
                 grad: RefCell::new(None),
-            }),
+            },
             ctx: Some(TensorContext {
                 saved_tensors: vec![Rc::clone(self), Rc::clone(x)],
                 op_type: OpType::BinaryOp(BinaryOpType::Mul),
@@ -141,14 +141,14 @@ impl BinaryOps for Tensor {
     }
 
     fn matmul(&self, x: &Tensor) -> Tensor {
-        let _s = &self.data.as_ref().value.borrow() as &Array2<f32>;
-        let _x = &x.data.as_ref().value.borrow() as &Array2<f32>;
+        let _s = &self.data.value.borrow() as &Array2<f32>;
+        let _x = &x.data.value.borrow() as &Array2<f32>;
 
         Rc::new(TensorCore {
-            data: Rc::new(TensorData {
+            data: TensorData {
                 value: RefCell::new(_s.dot(_x)),
                 grad: RefCell::new(None),
-            }),
+            },
             ctx: Some(TensorContext {
                 saved_tensors: vec![Rc::clone(self), Rc::clone(x)],
                 op_type: OpType::BinaryOp(BinaryOpType::Matmul),
@@ -161,10 +161,10 @@ impl UnaryOps for Tensor {
     fn sigmoid(&self) -> Tensor {
         let a = self.data.value.borrow().mapv(|val| 1.0 / (1.0 + f32::exp(-val)));
         Rc::new(TensorCore {
-            data: Rc::new(TensorData {
+            data: TensorData {
                 value: RefCell::new(a),
                 grad: RefCell::new(None),
-            }),
+            },
             ctx: Some(TensorContext {
                 saved_tensors: vec![Rc::clone(self)],
                 op_type: OpType::UnaryOp(UnaryOpType::Sigmoid),
@@ -175,10 +175,10 @@ impl UnaryOps for Tensor {
     fn square(&self) -> Tensor {
         let a = self.data.value.borrow().mapv(|val| val * val);
         Rc::new(TensorCore {
-            data: Rc::new(TensorData {
+            data: TensorData {
                 value: RefCell::new(a),
                 grad: RefCell::new(None),
-            }),
+            },
             ctx: Some(TensorContext {
                 saved_tensors: vec![Rc::clone(self)],
                 op_type: OpType::UnaryOp(UnaryOpType::Square),
@@ -192,10 +192,10 @@ impl ReduceOps for Tensor {
         let a = self.data.value.borrow().mean().unwrap();        
         let array2d = arr2(&[[a]]);
         Rc::new(TensorCore {
-            data: Rc::new(TensorData {
+            data: TensorData {
                 value: RefCell::new(array2d),
                 grad: RefCell::new(None),
-            }),
+            },
             ctx: Some(TensorContext {
                 saved_tensors: vec![Rc::clone(self)],
                 op_type: OpType::ReduceOp(ReduceOpTypes::Mean),
@@ -207,10 +207,10 @@ impl ReduceOps for Tensor {
         let a = self.data.value.borrow().sum();        
         let array2d = arr2(&[[a]]);
         Rc::new(TensorCore {
-            data: Rc::new(TensorData {
+            data: TensorData {
                 value: RefCell::new(array2d),
                 grad: RefCell::new(None),
-            }),
+            },
             ctx: Some(TensorContext {
                 saved_tensors: vec![Rc::clone(self)],
                 op_type: OpType::ReduceOp(ReduceOpTypes::Sum),
@@ -270,7 +270,7 @@ impl Backprop for Tensor {
         let arr = Array2::<f32>::ones(self.data.value.borrow().dim());
         for i in &topo {
             unsafe {
-                match (**i).data.as_ref().grad.borrow().as_ref() {
+                match (**i).data.grad.borrow().as_ref() {
                     Some(g) => {
                         (**i)._backward(g)
                     }
