@@ -513,13 +513,16 @@ impl TensorCore {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
-    use ndarray::{arr2, array, Array2};
+    use crate::tensor::ops::{UnaryOps, ReduceOps};
+
     use super::{
         ops::{BinaryOps, TensorConstructors},
         TensorCore,
     };
+    use ndarray::{arr2, array, Array2};
 
     #[test]
     fn matmul_test() {
@@ -533,7 +536,26 @@ mod tests {
 
         assert_eq!(d, array![[60., 229.], [110., 387.]]);
         assert_eq!(c.ctx.as_ref().unwrap().saved_tensors.len(), 2);
-        assert_eq!(&c.ctx.as_ref().unwrap().saved_tensors[0].data.value.borrow() as &Array2<f64>, array![[2.0, 3.0], [4.0, 5.0]]);
-        assert_eq!(&c.ctx.as_ref().unwrap().saved_tensors[1].data.value.borrow() as &Array2<f64>, array![[15.0, 8.0], [10.0, 71.0]]);
+        assert_eq!(
+            &c.ctx.as_ref().unwrap().saved_tensors[0].data.value.borrow() as &Array2<f64>,
+            array![[2.0, 3.0], [4.0, 5.0]]
+        );
+        assert_eq!(
+            &c.ctx.as_ref().unwrap().saved_tensors[1].data.value.borrow() as &Array2<f64>,
+            array![[15.0, 8.0], [10.0, 71.0]]
+        );
+    }
+
+    #[test]
+    fn chain_ops() {
+        let t1 = TensorCore::new(arr2(&[[2.0, 3.0], [4.0, 5.0]]));
+        let t2 = TensorCore::new(arr2(&[[15.0, 8.0], [10.0, 71.0]]));
+        let t3 = TensorCore::new(arr2(&[[58.0, 220.0], [100.0, 380.0]]));
+
+        let l = t1.matmul(&t2).sub(&t3).square().mean();
+        let d = &l.data.value.borrow() as &Array2<f64>;
+
+        assert_eq!(d.len(), 1);
+        assert_eq!(l.ctx.as_ref().unwrap().saved_tensors.len(), 1);
     }
 }
