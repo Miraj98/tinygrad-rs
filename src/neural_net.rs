@@ -1,6 +1,5 @@
 use ndarray::{Array, Array2, Dimension};
-use ndarray_stats::QuantileExt;
-use std::{borrow::Borrow, iter::zip};
+use std::{iter::zip};
 
 use crate::{
     datasets::Dataloader,
