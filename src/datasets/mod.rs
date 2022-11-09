@@ -6,12 +6,14 @@ pub trait Dataloader {
     fn size(&self) -> u16;
 }
 
+pub const PX_SIZE: usize = 2;
+
 pub mod mnist {
     use ndarray::Array2;
     use std::fs;
     use ::image::GrayImage;
 
-    use super::Dataloader;
+    use super::{Dataloader, PX_SIZE};
 
     pub struct MnistData {
         raw_data: Vec<u8>,
@@ -54,7 +56,7 @@ pub mod mnist {
 
     impl MnistData {
         pub fn get_img_buffer(&self, idx: usize) -> &[u8] {
-            &self.raw_data[(28 * 28 * idx + 16)..(16 + idx * 28 * 28 + 28 * 28)]
+            &self.raw_data[(PX_SIZE * PX_SIZE * idx + 16)..(16 + idx * PX_SIZE * PX_SIZE + PX_SIZE * PX_SIZE)]
         }
 
         pub fn get_image_label(&self, idx: usize) -> u8 {
@@ -69,14 +71,14 @@ pub mod mnist {
 
         pub fn get_image_nn_input(&self, idx: usize) -> Array2<f32> {
             let buf = self.get_img_buffer(idx).to_vec();
-            Array2::from_shape_vec((28 * 28, 1), buf)
+            Array2::from_shape_vec((PX_SIZE * PX_SIZE, 1), buf)
                 .unwrap()
                 .mapv(|val| (val as f32 / 256.))
         }
 
         pub fn save_as_png(&self, idx: usize) {
             let buf = self.get_img_buffer(idx).to_vec();
-            let img = GrayImage::from_vec(28, 28, buf).unwrap();
+            let img = GrayImage::from_vec(PX_SIZE as u32, PX_SIZE as u32, buf).unwrap();
             img.save_with_format(format!("{}.png", idx), image::ImageFormat::Png)
                 .unwrap();
         }

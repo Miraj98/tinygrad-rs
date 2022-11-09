@@ -1,12 +1,12 @@
 use ndarray::Array2;
 use ndarray_stats::QuantileExt;
-use tinygrad_rust::{datasets::mnist, neural_net};
+use tinygrad_rust::{datasets::{mnist, PX_SIZE}, neural_net};
 
 fn main() {
     let mnist_dataloader = mnist::load_data();
-    let batch_size = 5;
-    let epochs = 30;
-    let mut model = neural_net::Model::init(28 * 28, 10, vec![30], mnist_dataloader);
+    let batch_size = 1;
+    let epochs = 4;
+    let mut model = neural_net::Model::init(PX_SIZE * PX_SIZE, 10, vec![8], mnist_dataloader);
 
     model.train(batch_size, epochs)
 

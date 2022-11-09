@@ -11,16 +11,21 @@ pub enum BinaryOpType {
 
 #[derive(Debug)]
 pub enum UnaryOpType {
-    Mean,
     Square,
-    Sum,
     Sigmoid
+}
+
+#[derive(Debug)]
+pub enum ReduceOpTypes {
+    Mean,
+    Sum,
 }
 
 #[derive(Debug)]
 pub enum OpType {
     BinaryOp(BinaryOpType),
-    UnaryOp(UnaryOpType)
+    UnaryOp(UnaryOpType),
+    ReduceOp(ReduceOpTypes)
 }
 
 pub trait TensorConstructors {

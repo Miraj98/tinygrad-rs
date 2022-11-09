@@ -5,7 +5,7 @@ use ndarray_rand::{rand_distr::StandardNormal, RandomExt};
 use ops::{Backprop, BinaryOpType, BinaryOps, OpType, TensorConstructors, UnaryOpType};
 use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
-use self::ops::{UnaryOps, ReduceOps};
+use self::ops::{UnaryOps, ReduceOps, ReduceOpTypes};
 
 #[derive(Debug)]
 pub struct TensorData {
@@ -14,15 +14,15 @@ pub struct TensorData {
 }
 
 #[derive(Debug)]
-struct TensorContext {
-    saved_tensors: Vec<Rc<TensorCore>>,
-    op_type: OpType,
+pub struct TensorContext {
+    pub saved_tensors: Vec<Rc<TensorCore>>,
+    pub op_type: OpType,
 }
 
 #[derive(Debug)]
 pub struct TensorCore {
     pub data: Rc<TensorData>,
-    ctx: Option<TensorContext>,
+    pub ctx: Option<TensorContext>,
 }
 
 pub type Tensor = Rc<TensorCore>;
@@ -160,24 +160,62 @@ impl BinaryOps for Tensor {
 impl UnaryOps for Tensor {
     fn sigmoid(&self) -> Tensor {
         let a = self.data.value.borrow().mapv(|val| 1.0 / (1.0 + f32::exp(-val)));
-        TensorCore::new(a)
+        Rc::new(TensorCore {
+            data: Rc::new(TensorData {
+                value: RefCell::new(a),
+                grad: RefCell::new(None),
+            }),
+            ctx: Some(TensorContext {
+                saved_tensors: vec![Rc::clone(self)],
+                op_type: OpType::UnaryOp(UnaryOpType::Sigmoid),
+            }),
+        })
     }
 
     fn square(&self) -> Tensor {
         let a = self.data.value.borrow().mapv(|val| val * val);
-        TensorCore::new(a)
+        Rc::new(TensorCore {
+            data: Rc::new(TensorData {
+                value: RefCell::new(a),
+                grad: RefCell::new(None),
+            }),
+            ctx: Some(TensorContext {
+                saved_tensors: vec![Rc::clone(self)],
+                op_type: OpType::UnaryOp(UnaryOpType::Square),
+            }),
+        })
     }
 }
 
 impl ReduceOps for Tensor {
     fn mean(&self) -> Tensor {
         let a = self.data.value.borrow().mean().unwrap();        
-        TensorCore::new(arr2(&[[a]]))
+        let array2d = arr2(&[[a]]);
+        Rc::new(TensorCore {
+            data: Rc::new(TensorData {
+                value: RefCell::new(array2d),
+                grad: RefCell::new(None),
+            }),
+            ctx: Some(TensorContext {
+                saved_tensors: vec![Rc::clone(self)],
+                op_type: OpType::ReduceOp(ReduceOpTypes::Mean),
+            }),
+        })
     }
 
     fn sum(&self) -> Tensor {
         let a = self.data.value.borrow().sum();        
-        TensorCore::new(arr2(&[[a]]))
+        let array2d = arr2(&[[a]]);
+        Rc::new(TensorCore {
+            data: Rc::new(TensorData {
+                value: RefCell::new(array2d),
+                grad: RefCell::new(None),
+            }),
+            ctx: Some(TensorContext {
+                saved_tensors: vec![Rc::clone(self)],
+                op_type: OpType::ReduceOp(ReduceOpTypes::Sum),
+            }),
+        })
     }
 }
 
@@ -335,7 +373,7 @@ impl TensorCore {
 
                     if let Some(g) = grad_optn1 {
                         *t1 = Some(
-                            g + ctx.saved_tensors[1]
+                            g + ctx.saved_tensors[0]
                                 .as_ref()
                                 .data
                                 .value
@@ -345,7 +383,7 @@ impl TensorCore {
                         );
                     } else {
                         *t1 = Some(
-                            ctx.saved_tensors[1]
+                            ctx.saved_tensors[0]
                                 .as_ref()
                                 .data
                                 .value
@@ -409,7 +447,7 @@ impl TensorCore {
                         );
                     }
                 }
-                OpType::UnaryOp(UnaryOpType::Mean) => {
+                OpType::ReduceOp(ReduceOpTypes::Mean) => {
                     let mut t = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
                     let grad_optn = t.as_ref();
                     if let Some(g) = grad_optn {
@@ -434,7 +472,7 @@ impl TensorCore {
                         *t = Some(incoming_grad * 2.0 * &ctx.saved_tensors[0].as_ref().data.value.borrow() as &Array2<f32>);
                     }
                 }
-                OpType::UnaryOp(UnaryOpType::Sum) => {
+                OpType::ReduceOp(ReduceOpTypes::Sum) => {
                     let mut t = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
                     let grad_optn = t.as_ref();
                     if let Some(g) = grad_optn {
