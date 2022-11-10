@@ -29,11 +29,11 @@ pub enum OpType {
 }
 
 pub trait TensorConstructors {
-    fn new(a: Array2<f64>) -> Tensor;
-    fn ones<Sh>(shape: Sh) -> Tensor where Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>;
-    fn zeros<Sh>(shape: Sh) -> Tensor where Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>;
-    fn fill<Sh>(shape: Sh, x: f64) -> Tensor where Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>;
-    fn randn<Sh>(shape: Sh) -> Tensor where Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>;
+    fn new(a: Array2<f64>, requires_grad: bool) -> Tensor;
+    fn ones<Sh>(shape: Sh, requires_grad: bool) -> Tensor where Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>;
+    fn zeros<Sh>(shape: Sh, requires_grad: bool) -> Tensor where Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>;
+    fn fill<Sh>(shape: Sh, x: f64, requires_grad: bool) -> Tensor where Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>;
+    fn randn<Sh>(shape: Sh, requires_grad: bool) -> Tensor where Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>;
 }
 
 pub trait BinaryOps {

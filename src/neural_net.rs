@@ -1,5 +1,6 @@
 use ndarray::{Array, Array2, Dimension};
-use std::{iter::zip};
+use ndarray_stats::QuantileExt;
+use std::{borrow::Borrow, iter::zip};
 
 use crate::{
     datasets::Dataloader,
@@ -31,10 +32,10 @@ impl<T: Dataloader> Model<T> {
         let layers = [vec![isize], hidden_layers, vec![osize]].concat();
 
         for x in 0..layers.len() - 1 {
-            m.w.push(TensorCore::randn((layers[x + 1], layers[x])));
-            m.b.push(TensorCore::randn((layers[x + 1], 1)));
-            m.z.push(TensorCore::zeros((layers[x + 1], 1)));
-            m.a.push(TensorCore::zeros((layers[x + 1], 1)));
+            m.w.push(TensorCore::randn((layers[x + 1], layers[x]), true));
+            m.b.push(TensorCore::randn((layers[x + 1], 1), true));
+            m.z.push(TensorCore::zeros((layers[x + 1], 1), true));
+            m.a.push(TensorCore::zeros((layers[x + 1], 1), true));
         }
 
         return m;
@@ -45,65 +46,55 @@ impl<T: Dataloader> Model<T> {
         println!("Total batches {}", total_batches);
 
         for e in 0..epochs {
-            for j in 0..1 {
-                // println!("Current batch number - {}", j);
-                self.train_mini_batch(batch_size.into(), j, 2.);
+            for j in 0..total_batches / batch_size {
+                println!("Current batch number - {}", j);
+                self.train_mini_batch(batch_size.into(), j.into(), 2.);
             }
 
             println!("Completed epoch");
 
             // Test neural net performance every epoch
-            // let mut total_correct_pred = 0;
-            // for i in 0..60_000 {
-            //     let (_x, _y) = self.dataloader.get_by_idx(i);
-            //     let X = TensorCore::new(_x);
-            //     let (Y, _) =  _y.argmax().unwrap();
+            let mut total_correct_pred = 0;
+            for i in 0..60_000 {
+                let (_x, _y) = self.dataloader.get_by_idx(i);
+                let X = TensorCore::new(_x, false);
+                let (Y, _) = _y.argmax().unwrap();
 
-            //     let (y, _) = self.feed_forward(&X).data.value.borrow().argmax().unwrap();
-            //     if y == Y {
-            //         total_correct_pred = total_correct_pred + 1
-            //     }
-            // }
+                let (y, _) = self.feed_forward(&X).data.value.borrow().argmax().unwrap();
+                if y == Y {
+                    total_correct_pred = total_correct_pred + 1
+                }
+            }
 
-            // println!(
-            //     "{} NN perf score {}",
-            //     e,
-            //     (total_correct_pred as f64) * 100. / 60_000.
-            // );
+            println!(
+                "{} NN perf score {}",
+                e,
+                (total_correct_pred as f64) * 100. / 60_000.
+            );
         }
     }
 
-    pub fn train_mini_batch(
-        &mut self,
-        batch_size: usize,
-        batch_idx: usize,
-        lr: f64,
-    )  {
-        let mut w_grads_batch_aggregate: Vec<Array2<f64>> = (0..self.w.len())
-            .map(|l| Array2::zeros(self.w[l].data.value.borrow().dim()))
-            .collect();
-        let mut b_grads_batch_aggregate: Vec<Array2<f64>> = (0..self.b.len())
-            .map(|l| Array2::zeros(self.b[l].data.value.borrow().dim()))
-            .collect();
+    pub fn train_mini_batch(&mut self, batch_size: usize, batch_idx: usize, lr: f64) {
+        let lr_w_tensor: Vec<Tensor> = self.w.iter().map(|w| TensorCore::fill(w.dim(), lr / batch_size as f64, false)).collect();
+        let lr_b_tensor: Vec<Tensor> = self.b.iter().map(|b| TensorCore::fill(b.dim(), lr / batch_size as f64, false)).collect();
+
+        let mut w_grad_agg: Vec<Tensor> = self.w.iter().map(|w| TensorCore::zeros(w.dim(), false)).collect();
+        let mut b_grad_agg: Vec<Tensor> = self.w.iter().map(|w| TensorCore::zeros(w.dim(), false)).collect();
 
         let batch = self.dataloader.get_batch(batch_size, batch_idx);
         // println!("batch from  dataloader {}", batch.len());
 
         for (x, y) in batch {
-            let x_tensor = TensorCore::new(x);
-            let y_tensor = TensorCore::new(y);
-            let loss = self.backprop(&x_tensor, &y_tensor);
-
-            // println!("Loss {:?}", loss.ctx.as_ref().unwrap());
+            let x_tensor = TensorCore::new(x, true);
+            let y_tensor = TensorCore::new(y, true);
+            self.backprop(&x_tensor, &y_tensor);
 
             for i in 0..self.w.len() {
-                w_grads_batch_aggregate[i] =
-                    &w_grads_batch_aggregate[i] + self.w[i].data.grad.borrow().as_ref().unwrap();
-                b_grads_batch_aggregate[i] =
-                    &b_grads_batch_aggregate[i] + self.b[i].data.grad.borrow().as_ref().unwrap();
+                w_grad_agg[i] = w_grad_agg[i].add(self.w[i].grad().unwrap());
+                b_grad_agg[i] = b_grad_agg[i].add(self.b[i].grad().unwrap());
             }
 
-            loss.zero_grad();
+            // loss.zero_grad();
         }
         // let mut w = &(self).w[0].data.value.borrow_mut() as &Array2<f64>;
 
@@ -125,13 +116,24 @@ impl<T: Dataloader> Model<T> {
         // }
 
         for i in 0..self.w.len() {
-            let mut w = self.w[i].data.value.borrow_mut();
-            println!("Before {:?}", w);
-            *w = &w as &Array2<f64> - (lr * (&w_grads_batch_aggregate[i] / batch_size as f64));
-            println!("After {:?}", w);
+            self.w[i] = lr_w_tensor[i].mul(&w_grad_agg[i]);
+            self.b[i] = lr_b_tensor[i].mul(&b_grad_agg[i]);
+        }
 
-            let mut b = self.b[i].data.value.borrow_mut();
-            *b = &b as &Array2<f64> - (lr * (&b_grads_batch_aggregate[i] / batch_size as f64));
+        for i in 0..self.w.len() {
+            for j in self.w[i].ndarray().iter() {
+                if j.is_nan() {
+                    println!("This has nan {:?}", self.w[i].data.value.borrow());
+                    break;
+                }
+            }
+
+            for j in self.w[i].grad().unwrap().ndarray().iter() {
+                if j.is_nan() {
+                    println!("This has nan {:?}", self.w[i].data.grad.borrow().as_ref());
+                    break;
+                }
+            }
         }
     }
 
@@ -144,11 +146,10 @@ impl<T: Dataloader> Model<T> {
             a = sigmoid_activation(&z);
             next_in = &a;
         }
-        println!("Feed forward {:?}", a);
-        return TensorCore::new(a);
+        return TensorCore::new(a, false);
     }
 
-    pub fn backprop(&mut self, x: &Tensor, y: &Tensor) -> Tensor {
+    pub fn backprop(&mut self, x: &Tensor, y: &Tensor) {
         // Feed forward
         self.z[0] = self.w[0].matmul(&x).add(&self.b[0]);
         self.a[0] = self.z[0].sigmoid();
@@ -158,16 +159,16 @@ impl<T: Dataloader> Model<T> {
         }
 
         // Find loss and call backward on it
-        let loss = &self.a[self.a.len() - 1]
+        let loss = self.a[self.a.len() - 1]
             .sub(y)
             .mul(&TensorCore::fill(
                 self.a[self.a.len() - 1].data.value.borrow().dim(),
                 0.5,
+                true
             ))
             .square()
-            .mean();
+            .sum();
         loss.backward();
-        TensorCore::zeros([1, 1])
     }
 }
 

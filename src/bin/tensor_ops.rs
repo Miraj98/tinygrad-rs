@@ -3,8 +3,8 @@ use tinygrad_rust::tensor::ops::{Backprop, BinaryOps, TensorConstructors, UnaryO
 use tinygrad_rust::tensor::TensorCore;
 
 fn main() {
-    let a = TensorCore::new(arr2(&[[4., 3.], [2., 1.]]));
-    let b = TensorCore::new(arr2(&[[1., 2.], [3., 4.]]));
+    let a = TensorCore::new(arr2(&[[4., 3.], [2., 1.]]), true);
+    let b = TensorCore::new(arr2(&[[1., 2.], [3., 4.]]), true);
     // let c = a.matmul(&b).add(x);
 
     let loss = a
@@ -12,6 +12,7 @@ fn main() {
     .mul(&TensorCore::fill(
         a.data.value.borrow().dim(),
         0.5,
+        true
     ))
     .square()
     .mean();
