@@ -343,7 +343,7 @@ impl Backprop for Tensor {
 impl TensorCore {
     fn _backward(&self, incoming_grad: &Array2<f64>) {
         if let Some(ctx) = &self.ctx {
-            match ctx.op_type {
+            match &ctx.op_type {
                 OpType::BinaryOp(BinaryOpType::Add) => {
                     for i in 0..2 {
                         let mut t = ctx.saved_tensors[i].as_ref().data.grad.borrow_mut();
@@ -465,19 +465,36 @@ impl TensorCore {
                         );
                     }
                 }
-                OpType::ReduceOp(ReduceOpTypes::Mean) => {
-                    let mut t = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
-                    let grad_optn = t.as_ref();
-                    if let Some(g) = grad_optn {
-                        *t = Some(
-                            g + incoming_grad
-                                / ctx.saved_tensors[0].as_ref().data.value.borrow().len() as f64,
-                        );
-                    } else {
-                        *t = Some(
-                            incoming_grad
-                                / ctx.saved_tensors[0].as_ref().data.value.borrow().len() as f64,
-                        );
+                OpType::ReduceOp(reduce_op) => {
+                    let i_g = Array2::<f64>::ones(
+                        ctx.saved_tensors[0].as_ref().data.value.borrow().dim(),
+                    ) * incoming_grad[(0, 0)];
+                    match reduce_op {
+                        ReduceOpTypes::Mean => {
+                            let mut t = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
+                            let grad_optn = t.as_ref();
+                            if let Some(g) = grad_optn {
+                                *t = Some(
+                                    g + i_g
+                                        / ctx.saved_tensors[0].as_ref().data.value.borrow().len()
+                                            as f64,
+                                );
+                            } else {
+                                *t = Some(
+                                    i_g / ctx.saved_tensors[0].as_ref().data.value.borrow().len()
+                                        as f64,
+                                );
+                            }
+                        }
+                        ReduceOpTypes::Sum => {
+                            let mut t = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
+                            let grad_optn = t.as_ref();
+                            if let Some(g) = grad_optn {
+                                *t = Some(g + i_g);
+                            } else {
+                                *t = Some(i_g.to_owned());
+                            }
+                        }
                     }
                 }
                 OpType::UnaryOp(UnaryOpType::Square) => {
@@ -498,30 +515,27 @@ impl TensorCore {
                                     as &Array2<f64>,
                         );
                     }
-                }
-                OpType::ReduceOp(ReduceOpTypes::Sum) => {
-                    let mut t = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
-                    let grad_optn = t.as_ref();
-                    if let Some(g) = grad_optn {
-                        *t = Some(g + incoming_grad);
-                    } else {
-                        *t = Some(incoming_grad.to_owned());
-                    }
-                }
+                } // OpType::ReduceOp(ReduceOpTypes::Sum) => {
+                  //     let mut t = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
+                  //     let grad_optn = t.as_ref();
+                  //     if let Some(g) = grad_optn {
+                  //         *t = Some(g + incoming_grad);
+                  //     } else {
+                  //         *t = Some(incoming_grad.to_owned());
+                  //     }
+                  // }
             }
         }
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use crate::tensor::ops::{UnaryOps, ReduceOps};
-
     use super::{
-        ops::{BinaryOps, TensorConstructors},
+        ops::{Backprop, BinaryOps, TensorConstructors},
         TensorCore,
     };
+    use crate::tensor::ops::{ReduceOps, UnaryOps};
     use ndarray::{arr2, array, Array2};
 
     #[test]
@@ -554,8 +568,145 @@ mod tests {
 
         let l = t1.matmul(&t2).sub(&t3).square().mean();
         let d = &l.data.value.borrow() as &Array2<f64>;
-
         assert_eq!(d.len(), 1);
+        assert_eq!(d, array![[58.5000]]);
         assert_eq!(l.ctx.as_ref().unwrap().saved_tensors.len(), 1);
+
+        let ls0 = &l.ctx.as_ref().unwrap().saved_tensors[0]; // The tensor with the square value
+        assert_eq!(ls0.ctx.as_ref().unwrap().saved_tensors.len(), 1);
+        assert_eq!(
+            &ls0.data.value.borrow() as &Array2<f64>,
+            array![[4., 81.], [100., 49.]]
+        );
+
+        let ls00 = &ls0.ctx.as_ref().unwrap().saved_tensors[0]; // The tensor output from the subtract op
+        assert_eq!(ls00.ctx.as_ref().unwrap().saved_tensors.len(), 2);
+        assert_eq!(
+            &ls00.data.value.borrow() as &Array2<f64>,
+            array![[2., 9.,], [10., 7.]]
+        );
+
+        let ls000 = &ls00.ctx.as_ref().unwrap().saved_tensors[0]; // The tensor output from matmul op
+        let ls001 = &ls00.ctx.as_ref().unwrap().saved_tensors[1]; // t3
+        assert_eq!(ls000.ctx.as_ref().unwrap().saved_tensors.len(), 2);
+        assert_eq!(ls001.ctx.is_none(), true);
+        assert_eq!(
+            &ls000.data.value.borrow() as &Array2<f64>,
+            array![[60., 229.], [110., 387.]]
+        );
+
+        let _t1 = &ls000.ctx.as_ref().unwrap().saved_tensors[0];
+        let _t2 = &ls000.ctx.as_ref().unwrap().saved_tensors[1];
+
+        // let ls00 = &ls0.ctx.as_ref().unwrap().saved_tensors[0];
+        assert_eq!(_t1.ctx.is_none(), true);
+        assert_eq!(_t2.ctx.is_none(), true);
+        assert_eq!(
+            &_t1.data.value.borrow() as &Array2<f64>,
+            array![[2.0, 3.0], [4.0, 5.0]]
+        );
+        assert_eq!(
+            &_t2.data.value.borrow() as &Array2<f64>,
+            array![[15.0, 8.0], [10.0, 71.0]]
+        );
+    }
+
+    #[test]
+    fn check_grad() {
+        let a1 = arr2(&[[2.0, 3.0], [4.0, 5.0]]);
+        let a2 = arr2(&[[15.0, 8.0], [10.0, 71.0]]);
+        let a3 = arr2(&[[58.0, 220.0], [100.0, 380.0]]);
+
+        let t1 = TensorCore::new(a1.clone());
+        let t2 = TensorCore::new(a2.clone());
+        let t3 = TensorCore::new(a3.clone());
+
+        let _add = t1.add(&t2);
+        _add.backward();
+        assert_eq!(
+            t1.data.grad.borrow().as_ref().unwrap(),
+            array![[1., 1.], [1., 1.]]
+        );
+        assert_eq!(
+            t2.data.grad.borrow().as_ref().unwrap(),
+            array![[1., 1.], [1., 1.]]
+        );
+        _add.zero_grad();
+
+        let _mul = t1.mul(&t2);
+        _mul.backward();
+        assert_eq!(
+            t1.data.grad.borrow().as_ref().unwrap(),
+            array![[15.0, 8.0], [10.0, 71.0]]
+        );
+        assert_eq!(
+            t2.data.grad.borrow().as_ref().unwrap(),
+            array![[2.0, 3.0], [4.0, 5.0]]
+        );
+        _mul.zero_grad();
+
+        let _z = t1.matmul(&t2).add(&t3);
+        _z.backward();
+        assert_eq!(
+            t1.data.grad.borrow().as_ref().unwrap(),
+            array![[23., 81.], [23., 81.]]
+        );
+        assert_eq!(
+            t2.data.grad.borrow().as_ref().unwrap(),
+            array![[6., 6.], [8., 8.]]
+        );
+        assert_eq!(
+            t3.data.grad.borrow().as_ref().unwrap(),
+            array![[1., 1.], [1., 1.]]
+        );
+        _z.zero_grad();
+
+        let _z_reduce_sum = t1.matmul(&t2).add(&t3).sum();
+        _z_reduce_sum.backward();
+        assert_eq!(
+            t1.data.grad.borrow().as_ref().unwrap(),
+            array![[23., 81.], [23., 81.]]
+        );
+        assert_eq!(
+            t2.data.grad.borrow().as_ref().unwrap(),
+            array![[6., 6.], [8., 8.]]
+        );
+        assert_eq!(
+            t3.data.grad.borrow().as_ref().unwrap(),
+            array![[1., 1.], [1., 1.]]
+        );
+        _z_reduce_sum.zero_grad();
+
+        let _z_reduce_mean = t1.matmul(&t2).add(&t3).mean();
+        _z_reduce_mean.backward();
+        assert_eq!(
+            t1.data.grad.borrow().as_ref().unwrap(),
+            array![[5.7500, 20.2500], [5.7500, 20.2500]]
+        );
+        assert_eq!(
+            t2.data.grad.borrow().as_ref().unwrap(),
+            array![[1.5000, 1.5000], [2.0000, 2.0000]]
+        );
+        assert_eq!(
+            t3.data.grad.borrow().as_ref().unwrap(),
+            array![[0.2500, 0.2500], [0.2500, 0.2500]]
+        );
+        _z_reduce_mean.zero_grad();
+
+        let _z_reduce_sq = t1.matmul(&t2).add(&t3).square().sum();
+        _z_reduce_sq.backward();
+        assert_eq!(
+            t1.data.grad.borrow().as_ref().unwrap(),
+            array![[10724., 66118.], [18572., 113114.]]
+        );
+        assert_eq!(
+            t2.data.grad.borrow().as_ref().unwrap(),
+            array![[2152., 7932.], [2808., 10364.]]
+        );
+        assert_eq!(
+            t3.data.grad.borrow().as_ref().unwrap(),
+            array![[236., 898.], [420., 1534.]]
+        );
+        _z_reduce_mean.zero_grad();
     }
 }
