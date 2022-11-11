@@ -10,17 +10,17 @@ use crate::tensor::Tensor;
 #[derive(Debug)]
 pub enum BinaryOpType {
     Add(Add),
-    // Sub(Sub<Op>),
-    // Mul(Mul<Op>),
-    // Matmul(Matmul<Op>),
+    Sub(Sub),
+    Mul(Mul),
+    Matmul(Matmul),
 }
 
 pub trait BinaryOps {
     type Value;
     fn add(&self, x: &Self::Value) -> Rc<Tensor>;
-    // fn mul(&self, x: &Self::Value) -> Self::Value;
-    // fn sub(&self, x: &Self::Value) -> Self::Value;
-    // fn matmul(&self, x: &Self::Value) -> Self::Value;
+    fn mul(&self, x: &Self::Value) -> Self::Value;
+    fn sub(&self, x: &Self::Value) -> Self::Value;
+    fn matmul(&self, x: &Self::Value) -> Self::Value;
 }
 
 #[derive(Debug)]
@@ -63,55 +63,122 @@ impl Add {
     }
 }
 
-// pub struct Sub {
-//     lhs: Rc<Tensor<Self>>,
-//     rhs: Rc<Tensor<Self>>,
-// }
-// impl OpFunction for Sub {
-//     fn backward(&self) {
-//        todo!()
-//     }
-// }
-// impl Sub {
-//     pub fn new(a: Rc<Tensor<Self>>, b: Rc<Tensor<Self>>) -> Self {
-//         Self  { lhs: a, rhs: b }
-//     }
+#[derive(Debug)]
+pub struct Sub {
+    lhs: Rc<Tensor>,
+    rhs: Rc<Tensor>,
+}
+impl OpFunction for Sub {
+    type Output = Rc<Tensor>;
 
-//     pub fn from(a: &Rc<Tensor<Self>>, b: &Rc<Tensor<Self>>) -> Self {
-//         Self  { lhs: Rc::clone(a), rhs: Rc::clone(b) }
-//     }
-// }
+    fn forward(&self, requires_grad: bool) -> Self::Output {
+        let a = &self.lhs.ndarray() as &Array2<f64> - &self.rhs.ndarray() as &Array2<f64>;
+        Rc::new(Tensor {
+            data: UnsafeCell::new(a),
+            grad_value: UnsafeCell::new(None),
+            grad_borrow: Cell::new(0),
+            data_borrow: Cell::new(0),
+            ctx: if requires_grad {
+                OpType::BinaryOp(BinaryOpType::Sub(Sub {
+                    lhs: Rc::clone(&self.lhs),
+                    rhs: Rc::clone(&self.rhs),
+                }))
+            } else {
+                OpType::Noop
+            },
+            requires_grad: Cell::new(Some(requires_grad)),
+        })
+    }
 
-// pub struct Mul {
-//     lhs: Rc<Tensor<Self>>,
-//     rhs: Rc<Tensor<Self>>,
-// }
-// impl OpFunction for Mul {
-//     fn backward(&self) {
-//        todo!()
-//     }
-// }
-// impl Mul {
-//     pub fn new(a: Rc<Tensor<Self>>, b: Rc<Tensor<Self>>) -> Self {
-//         Self  { lhs: a, rhs: b }
-//     }
+    fn backward(&self) {
+        todo!()
+    }
+}
+impl Sub {
+    pub fn from(a: &Rc<Tensor>, b: &Rc<Tensor>) -> Self {
+        Self {
+            lhs: Rc::clone(a),
+            rhs: Rc::clone(b),
+        }
+    }
+}
 
-//     pub fn from(a: &Rc<Tensor<Self>>, b: &Rc<Tensor<Self>>) -> Self {
-//         Self  { lhs: Rc::clone(a), rhs: Rc::clone(b) }
-//     }
-// }
+#[derive(Debug)]
+pub struct Mul {
+    lhs: Rc<Tensor>,
+    rhs: Rc<Tensor>,
+}
+impl OpFunction for Mul {
+    type Output = Rc<Tensor>;
 
-// pub struct Matmul {
-//     lhs: Rc<Tensor<Self>>,
-//     rhs: Rc<Tensor<Self>>,
-// }
-// impl OpFunction for Matmul {
-//     fn backward(&self) {
-//        todo!()
-//     }
-// }
-// impl Matmul {
-//     pub fn new(a: Rc<Tensor<Self>>, b: Rc<Tensor<Self>>) -> Self {
-//         Self  { lhs: a, rhs: b }
-//     }
-// }
+    fn forward(&self, requires_grad: bool) -> Self::Output {
+        let a = &self.lhs.ndarray() as &Array2<f64> * &self.rhs.ndarray() as &Array2<f64>;
+        Rc::new(Tensor {
+            data: UnsafeCell::new(a),
+            grad_value: UnsafeCell::new(None),
+            grad_borrow: Cell::new(0),
+            data_borrow: Cell::new(0),
+            ctx: if requires_grad {
+                OpType::BinaryOp(BinaryOpType::Mul(Mul {
+                    lhs: Rc::clone(&self.lhs),
+                    rhs: Rc::clone(&self.rhs),
+                }))
+            } else {
+                OpType::Noop
+            },
+            requires_grad: Cell::new(Some(requires_grad)),
+        })
+    }
+
+    fn backward(&self) {
+        todo!()
+    }
+}
+impl Mul {
+    pub fn from(a: &Rc<Tensor>, b: &Rc<Tensor>) -> Self {
+        Self {
+            lhs: Rc::clone(a),
+            rhs: Rc::clone(b),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Matmul {
+    lhs: Rc<Tensor>,
+    rhs: Rc<Tensor>,
+}
+impl OpFunction for Matmul {
+    type Output = Rc<Tensor>;
+
+    fn forward(&self, requires_grad: bool) -> Self::Output {
+        let a = (&self.lhs.ndarray() as &Array2<f64>).dot(&self.rhs.ndarray() as &Array2<f64>);
+        Rc::new(Tensor {
+            data: UnsafeCell::new(a),
+            grad_value: UnsafeCell::new(None),
+            grad_borrow: Cell::new(0),
+            data_borrow: Cell::new(0),
+            ctx: if requires_grad {
+                OpType::BinaryOp(BinaryOpType::Matmul(Matmul {
+                    lhs: Rc::clone(&self.lhs),
+                    rhs: Rc::clone(&self.rhs),
+                }))
+            } else {
+                OpType::Noop
+            },
+            requires_grad: Cell::new(Some(requires_grad)),
+        })
+    }
+
+    fn backward(&self) {
+        todo!()
+    }
+}
+impl Matmul {
+    pub fn from(a: &Rc<Tensor>, b: &Rc<Tensor>) -> Self {
+        Self {
+            lhs: Rc::clone(a),
+            rhs: Rc::clone(b),
+        }
+    }
+}

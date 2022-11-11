@@ -11,7 +11,7 @@ use std::{
 };
 use tensor_ref::{BorrowRef, Ref};
 
-use self::ops::binary_ops::BinaryOps;
+use self::ops::binary_ops::{BinaryOps, Sub, Mul, Matmul};
 use self::ops::OpType;
 
 pub struct Noop;
@@ -99,23 +99,63 @@ impl BinaryOps for Rc<Tensor> {
         output
     }
 
-    // fn add(&self, x: &Self::Value) ->  Rc<Tensor<Add<Op>>> {
-    //     // Tensor::_new(
-    //     //     a,
-    //     //     Some(Add::new(Rc::clone(self), Rc::clone(x))),
-    //     //     Some(requires_grad),
-    //     // )
-    // }
+    fn sub(&self, x: &Self::Value) -> Self::Value {
+        let requires_grad = self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
+        let op = Sub::from(self, x);
+        let output = op.forward(requires_grad);
+        output
+    }
+
+    fn mul(&self, x: &Self::Value) -> Self::Value {
+        let requires_grad = self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
+        let op = Mul::from(self, x);
+        let output = op.forward(requires_grad);
+        output
+    }
+
+    fn matmul(&self, x: &Self::Value) -> Self::Value {
+        let requires_grad = self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
+        let op = Matmul::from(self, x);
+        let output = op.forward(requires_grad);
+        output
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use ndarray::array;
+    use ndarray::{array, Array2};
 
-    use super::Tensor;
+    use super::{Tensor, ops::binary_ops::BinaryOps};
 
     #[test]
     fn add_tensors() {
-        let s = Tensor::new(array![[1.]], Some(true));
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
+        let out = a.add(&b);
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[3., 5.], [7., 9.]]);
+    }
+
+    #[test]
+    fn sub_tensors() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
+        let out = b.sub(&a);
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[1., 1.], [1., 1.]]);
+    }
+
+    #[test]
+    fn mul_tensors() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
+        let out = a.mul(&b);
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[2., 6.], [12., 20.]]);
+    }
+
+    #[test]
+    fn matmul_tensors() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
+        let out = a.matmul(&b);
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[10., 13.], [22., 29.]]);
     }
 }
