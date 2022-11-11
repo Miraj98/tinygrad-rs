@@ -481,6 +481,8 @@ mod reduce_ops_tests {
 mod autodiff_tests {
     use ndarray::array;
 
+    use crate::tensor::ops::{reduce_ops::ReduceOps, unary_ops::UnaryOps};
+
     use super::{ops::binary_ops::BinaryOps, Tensor};
 
     #[test]
@@ -500,15 +502,19 @@ mod autodiff_tests {
     }
 
     #[test]
-    fn total_gradient_test() {
+    fn chain_rule_test() {
         let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
         let b = Tensor::new(array![[5., 6.], [7., 8.]], Some(true));
         let c = a.add(&b);
         let d = c.mul(&a);
+        let e = d.square().sum();
 
-        d.backward();
+        e.backward();
 
-        assert_eq!(a.grad().as_ref().unwrap(), array![[7., 10.], [13., 16.]]);
-        assert_eq!(b.grad().as_ref().unwrap(), array![[1., 2.], [3., 4.]]);
+        assert_eq!(
+            a.grad().as_ref().unwrap(),
+            array![[84., 320.], [780., 1536.]]
+        );
+        assert_eq!(b.grad().as_ref().unwrap(), array![[12., 64.], [180., 384.]]);
     }
 }
