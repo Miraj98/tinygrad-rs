@@ -53,7 +53,13 @@ impl OpFunction for Mean {
     }
 
     fn backward(&self, incoming_grad: &Array2<f64>) {
-        todo!()
+        let input_len = self.lhs.ndarray().len() as f64;
+        if let Some(curr_grad) = self.lhs.grad().as_ref() {
+            let grad = Some(curr_grad + (incoming_grad / input_len));
+            self.lhs.update_grad(grad);
+        } else {
+            self.lhs.update_grad(Some(incoming_grad / input_len));
+        }
     }
 }
 impl Mean {
@@ -90,7 +96,12 @@ impl OpFunction for Sum {
     }
 
     fn backward(&self, incoming_grad: &Array2<f64>) {
-        todo!()
+        if let Some(curr_grad) = self.lhs.grad().as_ref() {
+            let grad = Some(curr_grad + incoming_grad);
+            self.lhs.update_grad(grad);
+        } else {
+            self.lhs.update_grad(Some(incoming_grad.to_owned()));
+        }
     }
 }
 impl Sum {
