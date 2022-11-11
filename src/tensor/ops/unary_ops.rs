@@ -58,7 +58,7 @@ impl OpFunction for Sigmoid {
     fn backward(&self, incoming_grad: &Array2<f64>) {
         let lhs = &self.lhs.ndarray() as &Array2<f64>;
         let local_grad =
-            lhs.mapv(|val| f64::exp(-val) / ((1. - f64::exp(-val)) * (1. - f64::exp(-val))));
+            lhs.mapv(|val| f64::exp(-val) / ((1. + f64::exp(-val)) * (1. + f64::exp(-val))));
         if let Some(curr_grad) = self.lhs.grad().as_ref() {
             let grad = curr_grad + (local_grad * incoming_grad);
             self.lhs.update_grad(Some(grad));

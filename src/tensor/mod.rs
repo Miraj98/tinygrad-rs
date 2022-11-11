@@ -262,10 +262,6 @@ mod unary_ops_tests {
     fn sigmoid_test() {
         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
         let out = a.sigmoid();
-
-        let out_grad_array = array![[1., 1.], [1., 1.]];
-        out.__backward(&out_grad_array);
-
         assert_eq!(
             &out.ndarray() as &Array2<f64>,
             array![
@@ -277,13 +273,17 @@ mod unary_ops_tests {
 
     #[test]
     fn sigmoid_grad_test() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
         let out = a.sigmoid();
+
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out.__backward(&out_grad_array);
+
         assert_eq!(
-            &out.ndarray() as &Array2<f64>,
+            a.grad().as_ref().unwrap(),
             array![
-                [0.7310585786300049, 0.8807970779778823],
-                [0.9525741268224334, 0.9820137900379085]
+                [0.19661193324148188, 0.1049935854035065],
+                [0.045176659730912144, 0.017662706213291114]
             ]
         );
     }
@@ -293,6 +293,17 @@ mod unary_ops_tests {
         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
         let out = a.square();
         assert_eq!(&out.ndarray() as &Array2<f64>, array![[1., 4.], [9., 16.]]);
+    }
+
+    #[test]
+    fn square_grad_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+        let out = a.square();
+
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out.__backward(&out_grad_array);
+
+        assert_eq!(a.grad().as_ref().unwrap(), array![[2., 4.], [6., 8.]]);
     }
 }
 
