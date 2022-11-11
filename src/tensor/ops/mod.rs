@@ -17,8 +17,10 @@ pub enum OpType {
 impl OpType {
     fn __backward(&self) {
         match self {
-           OpType::BinaryOp(b) => b.__backward(),
-           _ => {}
+           OpType::BinaryOp(a) => a.__backward(),
+           OpType::UnaryOp(a) => a.__backward(),
+           OpType::ReduceOp(_a) => {}
+           OpType::Noop => {}
         };
     }
 }

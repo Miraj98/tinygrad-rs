@@ -10,6 +10,15 @@ pub enum UnaryOpType {
     Sigmoid(Sigmoid)
 }
 
+impl UnaryOpType {
+    pub fn __backward(&self) {
+        match self {
+           Self::Square(s) => s.backward(),
+           Self::Sigmoid(s) => s.backward()
+        }
+    }
+}
+
 pub trait UnaryOps {
     type Value;
     fn sigmoid(&self) -> Self::Value;

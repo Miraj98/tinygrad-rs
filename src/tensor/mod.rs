@@ -11,9 +11,9 @@ use std::{
 };
 use tensor_ref::{BorrowRef, Ref};
 
-use self::ops::binary_ops::{BinaryOps, Sub, Mul, Matmul};
+use self::ops::binary_ops::{BinaryOps, Matmul, Mul, Sub};
+use self::ops::unary_ops::{Sigmoid, Square, UnaryOps};
 use self::ops::OpType;
-use self::ops::unary_ops::{UnaryOps, Sigmoid, Square};
 
 #[derive(Debug)]
 pub struct Tensor {
@@ -78,28 +78,32 @@ impl BinaryOps for Rc<Tensor> {
     type Value = Rc<Tensor>;
 
     fn add(&self, x: &Self::Value) -> Self::Value {
-        let requires_grad = self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
+        let requires_grad =
+            self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
         let op = Add::from(self, x);
         let output = op.forward(requires_grad);
         output
     }
 
     fn sub(&self, x: &Self::Value) -> Self::Value {
-        let requires_grad = self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
+        let requires_grad =
+            self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
         let op = Sub::from(self, x);
         let output = op.forward(requires_grad);
         output
     }
 
     fn mul(&self, x: &Self::Value) -> Self::Value {
-        let requires_grad = self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
+        let requires_grad =
+            self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
         let op = Mul::from(self, x);
         let output = op.forward(requires_grad);
         output
     }
 
     fn matmul(&self, x: &Self::Value) -> Self::Value {
-        let requires_grad = self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
+        let requires_grad =
+            self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
         let op = Matmul::from(self, x);
         let output = op.forward(requires_grad);
         output
@@ -124,9 +128,9 @@ impl UnaryOps for Rc<Tensor> {
 }
 
 #[cfg(test)]
-mod tests {
+mod binary_ops_tests {
+    use super::{ops::binary_ops::BinaryOps, Tensor};
     use ndarray::{array, Array2};
-    use super::{Tensor, ops::binary_ops::BinaryOps};
 
     #[test]
     fn add_tensors() {
@@ -157,6 +161,32 @@ mod tests {
         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
         let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
         let out = a.matmul(&b);
-        assert_eq!(&out.ndarray() as &Array2<f64>, array![[10., 13.], [22., 29.]]);
+        assert_eq!(
+            &out.ndarray() as &Array2<f64>,
+            array![[10., 13.], [22., 29.]]
+        );
+    }
+}
+
+#[cfg(test)]
+mod unary_ops_tests {
+    use ndarray::{array, Array2};
+    use crate::tensor::{Tensor, ops::unary_ops::UnaryOps};
+
+    #[test]
+    fn sigmoid_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let out = a.sigmoid();
+        assert_eq!(
+            &out.ndarray() as &Array2<f64>,
+            array![[0.7311, 0.8808], [0.9526, 0.9820]]
+        );
+    }
+
+    #[test]
+    fn square_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let out = a.square();
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[2., 6.], [12., 20.]]);
     }
 }
