@@ -11,7 +11,6 @@ use std::{
     ptr::NonNull,
 };
 use tensor_ref::{BorrowRef, Ref};
-
 use self::ops::binary_ops::{BinaryOpType, BinaryOps, Matmul, Mul, Sub};
 use self::ops::reduce_ops::{Mean, ReduceOpType, ReduceOps, Sum};
 use self::ops::unary_ops::{Sigmoid, Square, UnaryOpType, UnaryOps};
@@ -79,7 +78,7 @@ impl Tensor {
         unsafe { *self.grad_value.get() = grad };
     }
 
-    fn deepwalk(&self) -> Vec<*const Tensor> {
+    fn __deepwalk(&self) -> Vec<*const Tensor> {
         let mut visited = HashSet::<*const Tensor>::new();
         let mut added = HashSet::<*const Tensor>::new();
         let mut work_stack = Vec::<*const Tensor>::new();
@@ -191,7 +190,7 @@ impl Tensor {
     }
 
     pub fn backward(&self) {
-        let tensors = self.deepwalk();
+        let tensors = self.__deepwalk();
         let self_grad = Array2::<f64>::ones(self.dim());
 
         for t in &tensors {
@@ -476,5 +475,28 @@ mod reduce_ops_tests {
         out.__backward(&out_grad_array);
 
         assert_eq!(a.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
+    }
+}
+
+#[cfg(test)]
+mod autodiff_tests {
+    use ndarray::array;
+
+    use super::{Tensor, ops::binary_ops::BinaryOps};
+
+    #[test]
+    fn topo_order() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+        let b = Tensor::new(array![[5., 6.], [7., 8.]], Some(true));
+        let c = a.add(&b);
+        let d = c.mul(&a);
+        
+        let order = d.__deepwalk();
+
+        assert_eq!(order.len(), 4);
+        assert_eq!(order[0], d.as_ref() as *const Tensor);
+        assert_eq!(order[1], c.as_ref() as *const Tensor);
+        assert_eq!(order[2], b.as_ref() as *const Tensor);
+        assert_eq!(order[3], a.as_ref() as *const Tensor);
     }
 }
