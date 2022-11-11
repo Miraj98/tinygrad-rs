@@ -221,21 +221,23 @@ impl OpFunction for Matmul {
     }
 
     fn backward(&self, incoming_grad: &Array2<f64>) {
-        let rhs = self.rhs.ndarray().t();
-        let lhs = self.lhs.ndarray().t();
+        let rhs = self.rhs.ndarray();
+        let lhs = self.lhs.ndarray();
+        let rhs_t = rhs.t();
+        let lhs_t = lhs.t();
 
         if let Some(curr_grad_lhs) = self.lhs.grad().as_ref() {
-            let grad = curr_grad_lhs + (rhs.dot(incoming_grad));
+            let grad = curr_grad_lhs + (rhs_t.dot(incoming_grad));
             self.lhs.update_grad(Some(grad));
         } else {
-            self.lhs.update_grad(Some(rhs.dot(incoming_grad)));
+            self.lhs.update_grad(Some(rhs_t.dot(incoming_grad)));
         }
 
         if let Some(curr_grad_rhs) = self.rhs.grad().as_ref() {
-            let grad = curr_grad_rhs - (incoming_grad.dot(&lhs));
+            let grad = curr_grad_rhs - (incoming_grad.dot(&lhs_t));
             self.rhs.update_grad(Some(grad));
         } else {
-            self.rhs.update_grad(Some(incoming_grad.dot(&lhs)));
+            self.rhs.update_grad(Some(incoming_grad.dot(&lhs_t)));
         }
     }
 }

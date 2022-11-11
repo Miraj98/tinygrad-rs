@@ -13,10 +13,10 @@ pub enum ReduceOpType {
 }
 
 impl ReduceOpType {
-    pub fn __backward(&self) {
+    pub fn __backward(&self, incoming_grad: &Array2<f64>) {
         match self {
-            ReduceOpType::Sum(a) => a.backward(),
-            ReduceOpType::Mean(a) => a.backward()
+            ReduceOpType::Sum(a) => a.backward(incoming_grad),
+            ReduceOpType::Mean(a) => a.backward(incoming_grad)
         };
     }
 }
@@ -52,7 +52,7 @@ impl OpFunction for Mean {
         })
     }
 
-    fn backward(&self) {
+    fn backward(&self, incoming_grad: &Array2<f64>) {
         todo!()
     }
 }
@@ -89,7 +89,7 @@ impl OpFunction for Sum {
         })
     }
 
-    fn backward(&self) {
+    fn backward(&self, incoming_grad: &Array2<f64>) {
         todo!()
     }
 }

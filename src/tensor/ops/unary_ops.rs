@@ -1,5 +1,7 @@
 use std::{rc::Rc, cell::{UnsafeCell, Cell}};
 
+use ndarray::Array2;
+
 use crate::tensor::Tensor;
 
 use super::{OpFunction, OpType};
@@ -11,10 +13,10 @@ pub enum UnaryOpType {
 }
 
 impl UnaryOpType {
-    pub fn __backward(&self) {
+    pub fn __backward(&self, incoming_grad: &Array2<f64>) {
         match self {
-           Self::Square(s) => s.backward(),
-           Self::Sigmoid(s) => s.backward()
+           Self::Square(s) => s.backward(incoming_grad),
+           Self::Sigmoid(s) => s.backward(incoming_grad)
         }
     }
 }
@@ -50,7 +52,7 @@ impl OpFunction for Sigmoid {
         })
      }
 
-    fn backward(&self) {
+    fn backward(&self, incoming_grad: &Array2<f64>) {
         todo!()
     }
 }
@@ -87,7 +89,7 @@ impl OpFunction for Square {
         })
      }
 
-    fn backward(&self) {
+    fn backward(&self, incoming_grad: &Array2<f64>) {
         todo!()
     }
 }

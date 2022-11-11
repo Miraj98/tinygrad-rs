@@ -19,8 +19,8 @@ impl OpType {
     fn __backward(&self, incoming_grad: &Array2<f64>) {
         match self {
            OpType::BinaryOp(a) => a.__backward(incoming_grad),
-           OpType::UnaryOp(a) => a.__backward(),
-           OpType::ReduceOp(a) => a.__backward(),
+           OpType::UnaryOp(a) => a.__backward(incoming_grad),
+           OpType::ReduceOp(a) => a.__backward(incoming_grad),
            OpType::Noop => {}
         };
     }
