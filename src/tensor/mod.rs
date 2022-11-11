@@ -1,6 +1,10 @@
 pub mod ops;
 pub mod tensor_ref;
 
+use self::ops::binary_ops::{BinaryOpType, BinaryOps, Matmul, Mul, Sub};
+use self::ops::reduce_ops::{Mean, ReduceOpType, ReduceOps, Sum};
+use self::ops::unary_ops::{Sigmoid, Square, UnaryOpType, UnaryOps};
+use self::ops::OpType;
 use ndarray::Array2;
 use ops::binary_ops::Add;
 use ops::OpFunction;
@@ -11,10 +15,6 @@ use std::{
     ptr::NonNull,
 };
 use tensor_ref::{BorrowRef, Ref};
-use self::ops::binary_ops::{BinaryOpType, BinaryOps, Matmul, Mul, Sub};
-use self::ops::reduce_ops::{Mean, ReduceOpType, ReduceOps, Sum};
-use self::ops::unary_ops::{Sigmoid, Square, UnaryOpType, UnaryOps};
-use self::ops::OpType;
 
 #[derive(Debug)]
 pub struct Tensor {
@@ -202,7 +202,6 @@ impl Tensor {
                     (**t).__backward(&self_grad);
                 }
             }
-            
         }
 
         self.update_grad(Some(self_grad));
@@ -482,7 +481,7 @@ mod reduce_ops_tests {
 mod autodiff_tests {
     use ndarray::array;
 
-    use super::{Tensor, ops::binary_ops::BinaryOps};
+    use super::{ops::binary_ops::BinaryOps, Tensor};
 
     #[test]
     fn topo_order() {
@@ -490,7 +489,7 @@ mod autodiff_tests {
         let b = Tensor::new(array![[5., 6.], [7., 8.]], Some(true));
         let c = a.add(&b);
         let d = c.mul(&a);
-        
+
         let order = d.__deepwalk();
 
         assert_eq!(order.len(), 4);
@@ -498,5 +497,18 @@ mod autodiff_tests {
         assert_eq!(order[1], c.as_ref() as *const Tensor);
         assert_eq!(order[2], b.as_ref() as *const Tensor);
         assert_eq!(order[3], a.as_ref() as *const Tensor);
+    }
+
+    #[test]
+    fn total_gradient_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+        let b = Tensor::new(array![[5., 6.], [7., 8.]], Some(true));
+        let c = a.add(&b);
+        let d = c.mul(&a);
+
+        d.backward();
+
+        assert_eq!(a.grad().as_ref().unwrap(), array![[7., 10.], [13., 16.]]);
+        assert_eq!(b.grad().as_ref().unwrap(), array![[1., 2.], [3., 4.]]);
     }
 }
