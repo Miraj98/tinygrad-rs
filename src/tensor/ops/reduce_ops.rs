@@ -52,8 +52,16 @@ impl OpFunction for Mean {
         })
     }
 
-    fn backward(&self, incoming_grad: &Array2<f64>) {
+    fn backward(&self, _incoming_grad: &Array2<f64>) {
         let input_len = self.lhs.ndarray().len() as f64;
+
+        if _incoming_grad.dim() != (1, 1) {
+            panic!("'mean' is a reduce op and its incoming gradient should be of shape -> (1, 1). Found {:?} instead", _incoming_grad.dim());
+        }
+
+        let ones = Array2::<f64>::ones(self.lhs.ndarray().dim());
+        let incoming_grad = ones * _incoming_grad[(0, 0)];
+
         if let Some(curr_grad) = self.lhs.grad().as_ref() {
             let grad = Some(curr_grad + (incoming_grad / input_len));
             self.lhs.update_grad(grad);
@@ -95,7 +103,14 @@ impl OpFunction for Sum {
         })
     }
 
-    fn backward(&self, incoming_grad: &Array2<f64>) {
+    fn backward(&self, _incoming_grad: &Array2<f64>) {
+        if _incoming_grad.dim() != (1, 1) {
+            panic!("'sum' is a reduce op and its incoming gradient should be of shape -> (1, 1). Found {:?} instead", _incoming_grad.dim());
+        }
+
+        let ones = Array2::<f64>::ones(self.lhs.ndarray().dim());
+        let incoming_grad = ones * _incoming_grad[(0, 0)];
+
         if let Some(curr_grad) = self.lhs.grad().as_ref() {
             let grad = Some(curr_grad + incoming_grad);
             self.lhs.update_grad(grad);
