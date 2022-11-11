@@ -262,6 +262,23 @@ mod unary_ops_tests {
     fn sigmoid_test() {
         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
         let out = a.sigmoid();
+
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out.__backward(&out_grad_array);
+
+        assert_eq!(
+            &out.ndarray() as &Array2<f64>,
+            array![
+                [0.7310585786300049, 0.8807970779778823],
+                [0.9525741268224334, 0.9820137900379085]
+            ]
+        );
+    }
+
+    #[test]
+    fn sigmoid_grad_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let out = a.sigmoid();
         assert_eq!(
             &out.ndarray() as &Array2<f64>,
             array![

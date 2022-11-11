@@ -1,4 +1,7 @@
-use std::{rc::Rc, cell::{UnsafeCell, Cell}};
+use std::{
+    cell::{Cell, UnsafeCell},
+    rc::Rc,
+};
 
 use ndarray::Array2;
 
@@ -9,14 +12,14 @@ use super::{OpFunction, OpType};
 #[derive(Debug)]
 pub enum UnaryOpType {
     Square(Square),
-    Sigmoid(Sigmoid)
+    Sigmoid(Sigmoid),
 }
 
 impl UnaryOpType {
     pub fn __backward(&self, incoming_grad: &Array2<f64>) {
         match self {
-           Self::Square(s) => s.backward(incoming_grad),
-           Self::Sigmoid(s) => s.backward(incoming_grad)
+            Self::Square(s) => s.backward(incoming_grad),
+            Self::Sigmoid(s) => s.backward(incoming_grad),
         }
     }
 }
@@ -29,12 +32,12 @@ pub trait UnaryOps {
 
 #[derive(Debug)]
 pub struct Sigmoid {
-    lhs: Rc<Tensor>
+    lhs: Rc<Tensor>,
 }
 impl OpFunction for Sigmoid {
     type Output = Rc<Tensor>;
 
-     fn forward(&self, requires_grad: bool) -> Self::Output {
+    fn forward(&self, requires_grad: bool) -> Self::Output {
         let a = self.lhs.ndarray().mapv(|val| 1.0 / (1.0 + f64::exp(-val)));
         Rc::new(Tensor {
             data: UnsafeCell::new(a),
@@ -50,28 +53,34 @@ impl OpFunction for Sigmoid {
             },
             requires_grad: Cell::new(Some(requires_grad)),
         })
-     }
+    }
 
     fn backward(&self, incoming_grad: &Array2<f64>) {
-        todo!()
+        let lhs = &self.lhs.ndarray() as &Array2<f64>;
+        let local_grad =
+            lhs.mapv(|val| f64::exp(-val) / ((1. - f64::exp(-val)) * (1. - f64::exp(-val))));
+        if let Some(curr_grad) = self.lhs.grad().as_ref() {
+            let grad = curr_grad + (local_grad * incoming_grad);
+            self.lhs.update_grad(Some(grad));
+        } else {
+            self.lhs.update_grad(Some(local_grad * incoming_grad));
+        }
     }
 }
 impl Sigmoid {
     pub fn from(a: &Rc<Tensor>) -> Self {
-        Self {
-            lhs: Rc::clone(a),
-        }
+        Self { lhs: Rc::clone(a) }
     }
 }
 
 #[derive(Debug)]
 pub struct Square {
-    lhs: Rc<Tensor>
+    lhs: Rc<Tensor>,
 }
 impl OpFunction for Square {
     type Output = Rc<Tensor>;
 
-     fn forward(&self, requires_grad: bool) -> Self::Output {
+    fn forward(&self, requires_grad: bool) -> Self::Output {
         let a = self.lhs.ndarray().mapv(|val| val * val);
         Rc::new(Tensor {
             data: UnsafeCell::new(a),
@@ -87,16 +96,20 @@ impl OpFunction for Square {
             },
             requires_grad: Cell::new(Some(requires_grad)),
         })
-     }
+    }
 
     fn backward(&self, incoming_grad: &Array2<f64>) {
-        todo!()
+        let lhs = &self.lhs.ndarray() as &Array2<f64>;
+        if let Some(curr_grad) = self.lhs.grad().as_ref() {
+            let grad = curr_grad + (2. * lhs * incoming_grad);
+            self.lhs.update_grad(Some(grad));
+        } else {
+            self.lhs.update_grad(Some(2. * lhs * incoming_grad));
+        }
     }
 }
 impl Square {
     pub fn from(a: &Rc<Tensor>) -> Self {
-        Self {
-            lhs: Rc::clone(a),
-        }
+        Self { lhs: Rc::clone(a) }
     }
 }
