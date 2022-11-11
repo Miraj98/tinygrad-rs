@@ -170,8 +170,8 @@ mod binary_ops_tests {
 
 #[cfg(test)]
 mod unary_ops_tests {
+    use crate::tensor::{ops::unary_ops::UnaryOps, Tensor};
     use ndarray::{array, Array2};
-    use crate::tensor::{Tensor, ops::unary_ops::UnaryOps};
 
     #[test]
     fn sigmoid_test() {
@@ -179,7 +179,10 @@ mod unary_ops_tests {
         let out = a.sigmoid();
         assert_eq!(
             &out.ndarray() as &Array2<f64>,
-            array![[0.7311, 0.8808], [0.9526, 0.9820]]
+            array![
+                [0.7310585786300049, 0.8807970779778823],
+                [0.9525741268224334, 0.9820137900379085]
+            ]
         );
     }
 
@@ -187,6 +190,6 @@ mod unary_ops_tests {
     fn square_test() {
         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
         let out = a.square();
-        assert_eq!(&out.ndarray() as &Array2<f64>, array![[2., 6.], [12., 20.]]);
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[1., 4.], [9., 16.]]);
     }
 }
