@@ -12,6 +12,15 @@ pub enum ReduceOpType {
     Sum(Sum),
 }
 
+impl ReduceOpType {
+    pub fn __backward(&self) {
+        match self {
+            ReduceOpType::Sum(a) => a.backward(),
+            ReduceOpType::Mean(a) => a.backward()
+        };
+    }
+}
+
 pub trait ReduceOps {
     type Value;
     fn sum(&self) -> Self::Value;

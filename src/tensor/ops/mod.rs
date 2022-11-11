@@ -19,7 +19,7 @@ impl OpType {
         match self {
            OpType::BinaryOp(a) => a.__backward(),
            OpType::UnaryOp(a) => a.__backward(),
-           OpType::ReduceOp(_a) => {}
+           OpType::ReduceOp(a) => a.__backward(),
            OpType::Noop => {}
         };
     }
