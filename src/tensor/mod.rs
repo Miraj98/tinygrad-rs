@@ -1,712 +1,350 @@
 pub mod ops;
+pub mod tensor_ref;
 
-use ndarray::{arr2, Array2, Dim, ShapeBuilder};
-use ndarray_rand::{rand_distr::StandardNormal, RandomExt};
-use ops::{
-    Backprop, BinaryOpType, BinaryOps, OpType, ReduceOpTypes, ReduceOps, TensorConstructors,
-    UnaryOpType, UnaryOps,
+use ndarray::Array2;
+use ops::binary_ops::Add;
+use ops::OpFunction;
+use std::rc::Rc;
+use std::{
+    cell::{Cell, UnsafeCell},
+    ptr::NonNull,
 };
-use std::{cell::RefCell, collections::HashSet, rc::Rc};
+use tensor_ref::{BorrowRef, Ref};
+
+use self::ops::binary_ops::{BinaryOps, Matmul, Mul, Sub};
+use self::ops::reduce_ops::{Mean, ReduceOps, Sum};
+use self::ops::unary_ops::{Sigmoid, Square, UnaryOps};
+use self::ops::OpType;
 
 #[derive(Debug)]
-pub struct TensorData {
-    pub value: RefCell<Array2<f64>>,
-    pub grad: RefCell<Option<Array2<f64>>>,
+pub struct Tensor {
+    data: UnsafeCell<Array2<f64>>,
+    grad_value: UnsafeCell<Option<Array2<f64>>>,
+    grad_borrow: Cell<isize>,
+    data_borrow: Cell<isize>,
+    ctx: OpType,
+    requires_grad: Cell<Option<bool>>,
 }
 
-#[derive(Debug)]
-pub struct TensorContext {
-    pub saved_tensors: Vec<Rc<TensorCore>>,
-    pub op_type: OpType,
-}
-
-#[derive(Debug)]
-pub struct TensorCore {
-    pub data: TensorData,
-    pub ctx: Option<TensorContext>,
-}
-
-pub type Tensor = Rc<TensorCore>;
-
-impl TensorConstructors for TensorCore {
-    fn new(a: Array2<f64>) -> Tensor {
-        Rc::new(TensorCore {
-            data: TensorData {
-                value: RefCell::new(a),
-                grad: RefCell::new(None),
-            },
-            ctx: None,
+impl Tensor {
+    fn __new(a: Array2<f64>, op: OpType, requires_grad: Option<bool>) -> Rc<Tensor> {
+        Rc::new(Tensor {
+            data: UnsafeCell::new(a),
+            grad_value: UnsafeCell::new(None),
+            grad_borrow: Cell::new(0),
+            data_borrow: Cell::new(0),
+            ctx: op,
+            requires_grad: Cell::new(requires_grad),
         })
     }
 
-    fn ones<Sh>(shape: Sh) -> Tensor
-    where
-        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
-    {
-        Rc::new(TensorCore {
-            data: TensorData {
-                value: RefCell::new(Array2::ones(shape)),
-                grad: RefCell::new(None),
-            },
-            ctx: None,
-        })
+    pub fn new(a: Array2<f64>, requires_grad: Option<bool>) -> Rc<Tensor> {
+        Tensor::__new(a, OpType::Noop, requires_grad)
     }
 
-    fn zeros<Sh>(shape: Sh) -> Tensor
-    where
-        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
-    {
-        Rc::new(TensorCore {
-            data: TensorData {
-                value: RefCell::new(Array2::zeros(shape)),
-                grad: RefCell::new(None),
-            },
-            ctx: None,
-        })
-    }
-
-    fn fill<Sh>(shape: Sh, x: f64) -> Tensor
-    where
-        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
-    {
-        Rc::new(TensorCore {
-            data: TensorData {
-                value: RefCell::new(Array2::ones(shape) * x),
-                grad: RefCell::new(None),
-            },
-            ctx: None,
-        })
-    }
-
-    fn randn<Sh>(shape: Sh) -> Tensor
-    where
-        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
-    {
-        Rc::new(TensorCore {
-            data: TensorData {
-                value: RefCell::new(Array2::random(shape, StandardNormal)),
-                grad: RefCell::new(None),
-            },
-            ctx: None,
-        })
-    }
-}
-
-impl BinaryOps for Tensor {
-    fn add(&self, x: &Tensor) -> Tensor {
-        let _s = &self.data.value.borrow() as &Array2<f64>;
-        let _x = &x.data.value.borrow() as &Array2<f64>;
-
-        Rc::new(TensorCore {
-            data: TensorData {
-                value: RefCell::new(_s + _x),
-                grad: RefCell::new(None),
-            },
-            ctx: Some(TensorContext {
-                saved_tensors: vec![Rc::clone(self), Rc::clone(x)],
-                op_type: OpType::BinaryOp(BinaryOpType::Add),
-            }),
-        })
-    }
-
-    fn sub(&self, x: &Tensor) -> Tensor {
-        let _s = &self.data.value.borrow() as &Array2<f64>;
-        let _x = &x.data.value.borrow() as &Array2<f64>;
-
-        Rc::new(TensorCore {
-            data: TensorData {
-                value: RefCell::new(_s - _x),
-                grad: RefCell::new(None),
-            },
-            ctx: Some(TensorContext {
-                saved_tensors: vec![Rc::clone(self), Rc::clone(x)],
-                op_type: OpType::BinaryOp(BinaryOpType::Sub),
-            }),
-        })
-    }
-
-    fn mul(&self, x: &Tensor) -> Tensor {
-        let _s = &self.data.value.borrow() as &Array2<f64>;
-        let _x = &x.data.value.borrow() as &Array2<f64>;
-
-        Rc::new(TensorCore {
-            data: TensorData {
-                value: RefCell::new(_s * _x),
-                grad: RefCell::new(None),
-            },
-            ctx: Some(TensorContext {
-                saved_tensors: vec![Rc::clone(self), Rc::clone(x)],
-                op_type: OpType::BinaryOp(BinaryOpType::Mul),
-            }),
-        })
-    }
-
-    fn matmul(&self, x: &Tensor) -> Tensor {
-        let _s = &self.data.value.borrow() as &Array2<f64>;
-        let _x = &x.data.value.borrow() as &Array2<f64>;
-
-        Rc::new(TensorCore {
-            data: TensorData {
-                value: RefCell::new(_s.dot(_x)),
-                grad: RefCell::new(None),
-            },
-            ctx: Some(TensorContext {
-                saved_tensors: vec![Rc::clone(self), Rc::clone(x)],
-                op_type: OpType::BinaryOp(BinaryOpType::Matmul),
-            }),
-        })
-    }
-}
-
-impl UnaryOps for Tensor {
-    fn sigmoid(&self) -> Tensor {
-        let a = self
-            .data
-            .value
-            .borrow()
-            .mapv(|val| 1.0 / (1.0 + f64::exp(-val)));
-        Rc::new(TensorCore {
-            data: TensorData {
-                value: RefCell::new(a),
-                grad: RefCell::new(None),
-            },
-            ctx: Some(TensorContext {
-                saved_tensors: vec![Rc::clone(self)],
-                op_type: OpType::UnaryOp(UnaryOpType::Sigmoid),
-            }),
-        })
-    }
-
-    fn square(&self) -> Tensor {
-        let a = self.data.value.borrow().mapv(|val| val * val);
-        Rc::new(TensorCore {
-            data: TensorData {
-                value: RefCell::new(a),
-                grad: RefCell::new(None),
-            },
-            ctx: Some(TensorContext {
-                saved_tensors: vec![Rc::clone(self)],
-                op_type: OpType::UnaryOp(UnaryOpType::Square),
-            }),
-        })
-    }
-}
-
-impl ReduceOps for Tensor {
-    fn mean(&self) -> Tensor {
-        let a = self.data.value.borrow().mean().unwrap();
-        let array2d = arr2(&[[a]]);
-        Rc::new(TensorCore {
-            data: TensorData {
-                value: RefCell::new(array2d),
-                grad: RefCell::new(None),
-            },
-            ctx: Some(TensorContext {
-                saved_tensors: vec![Rc::clone(self)],
-                op_type: OpType::ReduceOp(ReduceOpTypes::Mean),
-            }),
-        })
-    }
-
-    fn sum(&self) -> Tensor {
-        let a = self.data.value.borrow().sum();
-        let array2d = arr2(&[[a]]);
-        Rc::new(TensorCore {
-            data: TensorData {
-                value: RefCell::new(array2d),
-                grad: RefCell::new(None),
-            },
-            ctx: Some(TensorContext {
-                saved_tensors: vec![Rc::clone(self)],
-                op_type: OpType::ReduceOp(ReduceOpTypes::Sum),
-            }),
-        })
-    }
-}
-
-impl Backprop for Tensor {
-    fn backward(&self) {
-        let mut visited = HashSet::<*const TensorCore>::new();
-        let mut added = HashSet::<*const TensorCore>::new();
-        let mut work_stack = Vec::<*const TensorCore>::new();
-
-        let mut topo = Vec::<*const TensorCore>::new();
-
-        work_stack.push(self.as_ref());
-
-        while work_stack.len() > 0 {
-            if let Some(t) = work_stack.pop() {
-                if visited.contains(&t) {
-                    if !added.contains(&t) {
-                        topo.push(t);
-                        added.insert(t);
-                    }
-                } else {
-                    visited.insert(t);
-                    unsafe {
-                        if let Some(ctx) = &(*t).ctx {
-                            if ctx.saved_tensors.len() == 0 {
-                                if !added.contains(&t) {
-                                    topo.push(t);
-                                    added.insert(t);
-                                }
-                            } else {
-                                work_stack.push(t);
-                                for st in &ctx.saved_tensors {
-                                    let st_ptr = st.as_ref() as *const TensorCore;
-                                    if !visited.contains(&st_ptr) {
-                                        work_stack.push(st_ptr);
-                                    }
-                                }
-                            }
-                        } else {
-                            if !added.contains(&t) {
-                                topo.push(t);
-                                added.insert(t);
-                            }
-                        };
-                    }
-                }
+    pub fn try_grad(&self) -> Result<Ref<Option<Array2<f64>>>, isize> {
+        match BorrowRef::new(&self.grad_borrow) {
+            Some(b) => {
+                let value = unsafe { NonNull::new_unchecked(self.grad_value.get()) };
+                Ok(Ref { value, borrow: b })
             }
-        }
-
-        topo.reverse();
-
-        let arr = Array2::<f64>::ones(self.data.value.borrow().dim());
-        for i in &topo {
-            unsafe {
-                match (**i).data.grad.borrow().as_ref() {
-                    Some(g) => (**i)._backward(g),
-                    None => (**i)._backward(&arr),
-                }
-            }
-        }
-
-        let mut g = self.data.grad.borrow_mut();
-        *g = Some(arr);
-    }
-
-    fn zero_grad(&self) {
-        let mut visited = HashSet::<*const TensorCore>::new();
-        let mut added = HashSet::<*const TensorCore>::new();
-        let mut work_stack = Vec::<*const TensorCore>::new();
-
-        let mut topo = Vec::<*const TensorCore>::new();
-
-        work_stack.push(self.as_ref());
-
-        while work_stack.len() > 0 {
-            if let Some(t) = work_stack.pop() {
-                if visited.contains(&t) {
-                    if !added.contains(&t) {
-                        topo.push(t);
-                        added.insert(t);
-                    }
-                } else {
-                    visited.insert(t);
-                    unsafe {
-                        if let Some(ctx) = &(*t).ctx {
-                            if ctx.saved_tensors.len() == 0 {
-                                if !added.contains(&t) {
-                                    topo.push(t);
-                                    added.insert(t);
-                                }
-                            } else {
-                                work_stack.push(t);
-                                for st in &ctx.saved_tensors {
-                                    let st_ptr = st.as_ref() as *const TensorCore;
-                                    if !visited.contains(&st_ptr) {
-                                        work_stack.push(st_ptr);
-                                    }
-                                }
-                            }
-                        } else {
-                            if !added.contains(&t) {
-                                topo.push(t);
-                                added.insert(t);
-                            }
-                        };
-                    }
-                }
-            }
-        }
-
-        for i in &topo {
-            unsafe {
-                let mut g = (**i).data.grad.borrow_mut();
-                *g = None;
-            }
+            None => Err(self.grad_borrow.get()),
         }
     }
+
+    pub fn grad(&self) -> Ref<'_, Option<Array2<f64>>> {
+        self.try_grad().expect("already mutably borrowed")
+    }
+
+    pub fn dim(&self) -> (usize, usize) {
+        unsafe { (*self.data.get()).dim() }
+    }
+
+    pub fn try_ndarray(&self) -> Result<Ref<Array2<f64>>, isize> {
+        match BorrowRef::new(&self.data_borrow) {
+            Some(b) => {
+                let value = unsafe { NonNull::new_unchecked(self.data.get()) };
+                Ok(Ref { value, borrow: b })
+            }
+            None => Err(self.data_borrow.get()),
+        }
+    }
+
+    pub fn ndarray(&self) -> Ref<'_, Array2<f64>> {
+        self.try_ndarray().expect("already mutably borrowed")
+    }
+
+    pub fn update_grad(&self, grad: Option<Array2<f64>>) {
+        unsafe { *self.grad_value.get() = grad };
+    }
+
+    fn __backward(&self, incoming_grad: &Array2<f64>) {
+        self.ctx.__backward(incoming_grad);
+    }
 }
 
-impl TensorCore {
-    fn _backward(&self, incoming_grad: &Array2<f64>) {
-        if let Some(ctx) = &self.ctx {
-            match &ctx.op_type {
-                OpType::BinaryOp(BinaryOpType::Add) => {
-                    for i in 0..2 {
-                        let mut t = ctx.saved_tensors[i].as_ref().data.grad.borrow_mut();
-                        let grad_optn = t.as_ref();
-                        if let Some(g) = grad_optn {
-                            *t = Some(g + incoming_grad);
-                        } else {
-                            *t = Some(incoming_grad.to_owned());
-                        }
-                    }
-                }
-                OpType::BinaryOp(BinaryOpType::Matmul) => {
-                    let mut t0 = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
-                    let mut t1 = ctx.saved_tensors[1].as_ref().data.grad.borrow_mut();
-                    let grad_optn0 = t0.as_ref();
-                    let grad_optn1 = t1.as_ref();
+impl BinaryOps for Rc<Tensor> {
+    type Value = Rc<Tensor>;
 
-                    if let Some(g) = grad_optn0 {
-                        *t0 = Some(
-                            g + incoming_grad
-                                .dot(&ctx.saved_tensors[1].as_ref().data.value.borrow().t()),
-                        );
-                    } else {
-                        *t0 = Some(
-                            incoming_grad
-                                .dot(&ctx.saved_tensors[1].as_ref().data.value.borrow().t()),
-                        );
-                    }
+    fn add(&self, x: &Self::Value) -> Self::Value {
+        let requires_grad =
+            self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
+        let op = Add::from(self, x);
+        let output = op.forward(requires_grad);
+        output
+    }
 
-                    if let Some(g) = grad_optn1 {
-                        *t1 = Some(
-                            g + ctx.saved_tensors[0]
-                                .as_ref()
-                                .data
-                                .value
-                                .borrow()
-                                .t()
-                                .dot(incoming_grad),
-                        );
-                    } else {
-                        *t1 = Some(
-                            ctx.saved_tensors[0]
-                                .as_ref()
-                                .data
-                                .value
-                                .borrow()
-                                .t()
-                                .dot(incoming_grad),
-                        );
-                    }
-                }
-                OpType::BinaryOp(BinaryOpType::Mul) => {
-                    let mut t0 = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
-                    let mut t1 = ctx.saved_tensors[1].as_ref().data.grad.borrow_mut();
-                    let grad_optn0 = t0.as_ref();
-                    let grad_optn1 = t1.as_ref();
+    fn sub(&self, x: &Self::Value) -> Self::Value {
+        let requires_grad =
+            self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
+        let op = Sub::from(self, x);
+        let output = op.forward(requires_grad);
+        output
+    }
 
-                    if let Some(g) = grad_optn0 {
-                        *t0 = Some(
-                            g + incoming_grad
-                                * &ctx.saved_tensors[1].as_ref().data.value.borrow()
-                                    as &Array2<f64>,
-                        );
-                    } else {
-                        *t0 = Some(
-                            incoming_grad
-                                * &ctx.saved_tensors[1].as_ref().data.value.borrow()
-                                    as &Array2<f64>,
-                        );
-                    }
+    fn mul(&self, x: &Self::Value) -> Self::Value {
+        let requires_grad =
+            self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
+        let op = Mul::from(self, x);
+        let output = op.forward(requires_grad);
+        output
+    }
 
-                    if let Some(g) = grad_optn1 {
-                        *t1 = Some(
-                            g + incoming_grad
-                                * &ctx.saved_tensors[0].as_ref().data.value.borrow()
-                                    as &Array2<f64>,
-                        );
-                    } else {
-                        *t1 = Some(
-                            incoming_grad
-                                * &ctx.saved_tensors[0].as_ref().data.value.borrow()
-                                    as &Array2<f64>,
-                        );
-                    }
-                }
-                OpType::BinaryOp(BinaryOpType::Sub) => {
-                    for i in 0..2 {
-                        let mut t = ctx.saved_tensors[i].as_ref().data.grad.borrow_mut();
-                        let grad_optn = t.as_ref();
-                        if let Some(g) = grad_optn {
-                            *t = Some(g - incoming_grad);
-                        } else {
-                            *t = Some((-incoming_grad).to_owned());
-                        }
-                    }
-                }
-                OpType::UnaryOp(UnaryOpType::Sigmoid) => {
-                    let mut t = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
-                    let grad_optn = t.as_ref();
-                    if let Some(g) = grad_optn {
-                        *t = Some(
-                            g + incoming_grad
-                                * &ctx.saved_tensors[0]
-                                    .as_ref()
-                                    .data
-                                    .value
-                                    .borrow()
-                                    .mapv(|f| f * (1. - f)),
-                        );
-                    } else {
-                        *t = Some(
-                            incoming_grad
-                                * &ctx.saved_tensors[0]
-                                    .as_ref()
-                                    .data
-                                    .value
-                                    .borrow()
-                                    .mapv(|f| f * (1. - f)),
-                        );
-                    }
-                }
-                OpType::ReduceOp(reduce_op) => {
-                    let i_g = Array2::<f64>::ones(
-                        ctx.saved_tensors[0].as_ref().data.value.borrow().dim(),
-                    ) * incoming_grad[(0, 0)];
-                    match reduce_op {
-                        ReduceOpTypes::Mean => {
-                            let mut t = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
-                            let grad_optn = t.as_ref();
-                            if let Some(g) = grad_optn {
-                                *t = Some(
-                                    g + i_g
-                                        / ctx.saved_tensors[0].as_ref().data.value.borrow().len()
-                                            as f64,
-                                );
-                            } else {
-                                *t = Some(
-                                    i_g / ctx.saved_tensors[0].as_ref().data.value.borrow().len()
-                                        as f64,
-                                );
-                            }
-                        }
-                        ReduceOpTypes::Sum => {
-                            let mut t = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
-                            let grad_optn = t.as_ref();
-                            if let Some(g) = grad_optn {
-                                *t = Some(g + i_g);
-                            } else {
-                                *t = Some(i_g.to_owned());
-                            }
-                        }
-                    }
-                }
-                OpType::UnaryOp(UnaryOpType::Square) => {
-                    let mut t = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
-                    let grad_optn = t.as_ref();
-                    if let Some(g) = grad_optn {
-                        *t = Some(
-                            g + incoming_grad
-                                * 2.0
-                                * &ctx.saved_tensors[0].as_ref().data.value.borrow()
-                                    as &Array2<f64>,
-                        );
-                    } else {
-                        *t = Some(
-                            incoming_grad
-                                * 2.0
-                                * &ctx.saved_tensors[0].as_ref().data.value.borrow()
-                                    as &Array2<f64>,
-                        );
-                    }
-                } // OpType::ReduceOp(ReduceOpTypes::Sum) => {
-                  //     let mut t = ctx.saved_tensors[0].as_ref().data.grad.borrow_mut();
-                  //     let grad_optn = t.as_ref();
-                  //     if let Some(g) = grad_optn {
-                  //         *t = Some(g + incoming_grad);
-                  //     } else {
-                  //         *t = Some(incoming_grad.to_owned());
-                  //     }
-                  // }
-            }
-        }
+    fn matmul(&self, x: &Self::Value) -> Self::Value {
+        let requires_grad =
+            self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
+        let op = Matmul::from(self, x);
+        let output = op.forward(requires_grad);
+        output
+    }
+}
+
+impl UnaryOps for Rc<Tensor> {
+    type Value = Rc<Tensor>;
+    fn sigmoid(&self) -> Self::Value {
+        let requires_grad = self.requires_grad.get().unwrap_or(false);
+        let op = Sigmoid::from(self);
+        let output = op.forward(requires_grad);
+        output
+    }
+
+    fn square(&self) -> Self::Value {
+        let requires_grad = self.requires_grad.get().unwrap_or(false);
+        let op = Square::from(self);
+        let output = op.forward(requires_grad);
+        output
+    }
+}
+
+impl ReduceOps for Rc<Tensor> {
+    type Value = Rc<Tensor>;
+
+    fn mean(&self) -> Self::Value {
+        let requires_grad = self.requires_grad.get().unwrap_or(false);
+        let op = Mean::from(self);
+        let output = op.forward(requires_grad);
+        output
+    }
+
+    fn sum(&self) -> Self::Value {
+        let requires_grad = self.requires_grad.get().unwrap_or(false);
+        let op = Sum::from(self);
+        let output = op.forward(requires_grad);
+        output
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        ops::{Backprop, BinaryOps, TensorConstructors},
-        TensorCore,
-    };
-    use crate::tensor::ops::{ReduceOps, UnaryOps};
-    use ndarray::{arr2, array, Array2};
+mod binary_ops_tests {
+    use super::{ops::binary_ops::BinaryOps, Tensor};
+    use ndarray::{array, Array2};
 
     #[test]
-    fn matmul_test() {
-        let a = arr2(&[[2.0, 3.0], [4.0, 5.0]]);
-        let b = arr2(&[[15.0, 8.0], [10.0, 71.0]]);
+    fn add_tensors() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
+        let out = a.add(&b);
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[3., 5.], [7., 9.]]);
+    }
 
-        let a_tensor = TensorCore::new(a);
-        let b_tensor = TensorCore::new(b);
-        let c = a_tensor.matmul(&b_tensor);
-        let d = &c.data.value.borrow() as &Array2<f64>;
+    #[test]
+    fn add_tensors_grad_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+        let b = Tensor::new(array![[2., 3.], [4., 5.]], Some(true));
+        let out = a.add(&b);
 
-        assert_eq!(d, array![[60., 229.], [110., 387.]]);
-        assert_eq!(c.ctx.as_ref().unwrap().saved_tensors.len(), 2);
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out.__backward(&out_grad_array);
+
+        assert_eq!(a.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
+        assert_eq!(b.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
+    }
+
+    #[test]
+    fn sub_tensors() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
+        let out = b.sub(&a);
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[1., 1.], [1., 1.]]);
+    }
+
+    #[test]
+    fn sub_tensors_grad_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+        let b = Tensor::new(array![[2., 3.], [4., 5.]], Some(true));
+        let out = b.sub(&a);
+
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out.__backward(&out_grad_array);
+
+        assert_eq!(a.grad().as_ref().unwrap(), array![[-1., -1.], [-1., -1.]]);
+        assert_eq!(b.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
+    }
+
+    #[test]
+    fn mul_tensors() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
+        let out = a.mul(&b);
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[2., 6.], [12., 20.]]);
+    }
+
+    #[test]
+    fn mul_tensors_grad_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+        let b = Tensor::new(array![[2., 3.], [4., 5.]], Some(true));
+        let out = a.mul(&b);
+
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out.__backward(&out_grad_array);
+
+        assert_eq!(a.grad().as_ref().unwrap(), array![[2., 3.], [4., 5.]]);
+        assert_eq!(b.grad().as_ref().unwrap(), array![[1., 2.], [3., 4.]]);
+    }
+
+    #[test]
+    fn matmul_tensors() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
+        let out = a.matmul(&b);
         assert_eq!(
-            &c.ctx.as_ref().unwrap().saved_tensors[0].data.value.borrow() as &Array2<f64>,
-            array![[2.0, 3.0], [4.0, 5.0]]
-        );
-        assert_eq!(
-            &c.ctx.as_ref().unwrap().saved_tensors[1].data.value.borrow() as &Array2<f64>,
-            array![[15.0, 8.0], [10.0, 71.0]]
+            &out.ndarray() as &Array2<f64>,
+            array![[10., 13.], [22., 29.]]
         );
     }
 
     #[test]
-    fn chain_ops() {
-        let t1 = TensorCore::new(arr2(&[[2.0, 3.0], [4.0, 5.0]]));
-        let t2 = TensorCore::new(arr2(&[[15.0, 8.0], [10.0, 71.0]]));
-        let t3 = TensorCore::new(arr2(&[[58.0, 220.0], [100.0, 380.0]]));
+    fn matmul_tensors_grad_test() {
+        let a = Tensor::new(array![[1., 2., 3.], [4., 5., 6.]], Some(true));
+        let b = Tensor::new(array![[2., 3.], [4., 5.], [6., 7.]], Some(true));
+        let out = a.matmul(&b);
 
-        let l = t1.matmul(&t2).sub(&t3).square().mean();
-        let d = &l.data.value.borrow() as &Array2<f64>;
-        assert_eq!(d.len(), 1);
-        assert_eq!(d, array![[58.5000]]);
-        assert_eq!(l.ctx.as_ref().unwrap().saved_tensors.len(), 1);
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out.__backward(&out_grad_array);
 
-        let ls0 = &l.ctx.as_ref().unwrap().saved_tensors[0]; // The tensor with the square value
-        assert_eq!(ls0.ctx.as_ref().unwrap().saved_tensors.len(), 1);
         assert_eq!(
-            &ls0.data.value.borrow() as &Array2<f64>,
-            array![[4., 81.], [100., 49.]]
-        );
-
-        let ls00 = &ls0.ctx.as_ref().unwrap().saved_tensors[0]; // The tensor output from the subtract op
-        assert_eq!(ls00.ctx.as_ref().unwrap().saved_tensors.len(), 2);
-        assert_eq!(
-            &ls00.data.value.borrow() as &Array2<f64>,
-            array![[2., 9.,], [10., 7.]]
-        );
-
-        let ls000 = &ls00.ctx.as_ref().unwrap().saved_tensors[0]; // The tensor output from matmul op
-        let ls001 = &ls00.ctx.as_ref().unwrap().saved_tensors[1]; // t3
-        assert_eq!(ls000.ctx.as_ref().unwrap().saved_tensors.len(), 2);
-        assert_eq!(ls001.ctx.is_none(), true);
-        assert_eq!(
-            &ls000.data.value.borrow() as &Array2<f64>,
-            array![[60., 229.], [110., 387.]]
-        );
-
-        let _t1 = &ls000.ctx.as_ref().unwrap().saved_tensors[0];
-        let _t2 = &ls000.ctx.as_ref().unwrap().saved_tensors[1];
-
-        // let ls00 = &ls0.ctx.as_ref().unwrap().saved_tensors[0];
-        assert_eq!(_t1.ctx.is_none(), true);
-        assert_eq!(_t2.ctx.is_none(), true);
-        assert_eq!(
-            &_t1.data.value.borrow() as &Array2<f64>,
-            array![[2.0, 3.0], [4.0, 5.0]]
+            a.grad().as_ref().unwrap(),
+            array![[5., 9., 13.], [5., 9., 13.]]
         );
         assert_eq!(
-            &_t2.data.value.borrow() as &Array2<f64>,
-            array![[15.0, 8.0], [10.0, 71.0]]
+            b.grad().as_ref().unwrap(),
+            array![[5., 5.], [7., 7.], [9., 9.]]
+        );
+    }
+}
+
+#[cfg(test)]
+mod unary_ops_tests {
+    use crate::tensor::{ops::unary_ops::UnaryOps, Tensor};
+    use ndarray::{array, Array2};
+
+    #[test]
+    fn sigmoid_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let out = a.sigmoid();
+        assert_eq!(
+            &out.ndarray() as &Array2<f64>,
+            array![
+                [0.7310585786300049, 0.8807970779778823],
+                [0.9525741268224334, 0.9820137900379085]
+            ]
         );
     }
 
     #[test]
-    fn check_grad() {
-        let a1 = arr2(&[[2.0, 3.0], [4.0, 5.0]]);
-        let a2 = arr2(&[[15.0, 8.0], [10.0, 71.0]]);
-        let a3 = arr2(&[[58.0, 220.0], [100.0, 380.0]]);
+    fn sigmoid_grad_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+        let out = a.sigmoid();
 
-        let t1 = TensorCore::new(a1.clone());
-        let t2 = TensorCore::new(a2.clone());
-        let t3 = TensorCore::new(a3.clone());
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out.__backward(&out_grad_array);
 
-        let _add = t1.add(&t2);
-        _add.backward();
         assert_eq!(
-            t1.data.grad.borrow().as_ref().unwrap(),
-            array![[1., 1.], [1., 1.]]
+            a.grad().as_ref().unwrap(),
+            array![
+                [0.19661193324148188, 0.1049935854035065],
+                [0.045176659730912144, 0.017662706213291114]
+            ]
         );
-        assert_eq!(
-            t2.data.grad.borrow().as_ref().unwrap(),
-            array![[1., 1.], [1., 1.]]
-        );
-        _add.zero_grad();
+    }
 
-        let _mul = t1.mul(&t2);
-        _mul.backward();
-        assert_eq!(
-            t1.data.grad.borrow().as_ref().unwrap(),
-            array![[15.0, 8.0], [10.0, 71.0]]
-        );
-        assert_eq!(
-            t2.data.grad.borrow().as_ref().unwrap(),
-            array![[2.0, 3.0], [4.0, 5.0]]
-        );
-        _mul.zero_grad();
+    #[test]
+    fn square_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let out = a.square();
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[1., 4.], [9., 16.]]);
+    }
 
-        let _z = t1.matmul(&t2).add(&t3);
-        _z.backward();
-        assert_eq!(
-            t1.data.grad.borrow().as_ref().unwrap(),
-            array![[23., 81.], [23., 81.]]
-        );
-        assert_eq!(
-            t2.data.grad.borrow().as_ref().unwrap(),
-            array![[6., 6.], [8., 8.]]
-        );
-        assert_eq!(
-            t3.data.grad.borrow().as_ref().unwrap(),
-            array![[1., 1.], [1., 1.]]
-        );
-        _z.zero_grad();
+    #[test]
+    fn square_grad_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+        let out = a.square();
 
-        let _z_reduce_sum = t1.matmul(&t2).add(&t3).sum();
-        _z_reduce_sum.backward();
-        assert_eq!(
-            t1.data.grad.borrow().as_ref().unwrap(),
-            array![[23., 81.], [23., 81.]]
-        );
-        assert_eq!(
-            t2.data.grad.borrow().as_ref().unwrap(),
-            array![[6., 6.], [8., 8.]]
-        );
-        assert_eq!(
-            t3.data.grad.borrow().as_ref().unwrap(),
-            array![[1., 1.], [1., 1.]]
-        );
-        _z_reduce_sum.zero_grad();
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out.__backward(&out_grad_array);
 
-        let _z_reduce_mean = t1.matmul(&t2).add(&t3).mean();
-        _z_reduce_mean.backward();
-        assert_eq!(
-            t1.data.grad.borrow().as_ref().unwrap(),
-            array![[5.7500, 20.2500], [5.7500, 20.2500]]
-        );
-        assert_eq!(
-            t2.data.grad.borrow().as_ref().unwrap(),
-            array![[1.5000, 1.5000], [2.0000, 2.0000]]
-        );
-        assert_eq!(
-            t3.data.grad.borrow().as_ref().unwrap(),
-            array![[0.2500, 0.2500], [0.2500, 0.2500]]
-        );
-        _z_reduce_mean.zero_grad();
+        assert_eq!(a.grad().as_ref().unwrap(), array![[2., 4.], [6., 8.]]);
+    }
+}
 
-        let _z_reduce_sq = t1.matmul(&t2).add(&t3).square().sum();
-        _z_reduce_sq.backward();
-        assert_eq!(
-            t1.data.grad.borrow().as_ref().unwrap(),
-            array![[10724., 66118.], [18572., 113114.]]
-        );
-        assert_eq!(
-            t2.data.grad.borrow().as_ref().unwrap(),
-            array![[2152., 7932.], [2808., 10364.]]
-        );
-        assert_eq!(
-            t3.data.grad.borrow().as_ref().unwrap(),
-            array![[236., 898.], [420., 1534.]]
-        );
-        _z_reduce_mean.zero_grad();
+#[cfg(test)]
+mod reduce_ops_tests {
+    use crate::tensor::{ops::reduce_ops::ReduceOps, Tensor};
+    use ndarray::{array, Array2};
+
+    #[test]
+    fn mean_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let out = a.mean();
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[2.5]]);
+    }
+
+    #[test]
+    fn mean_grad_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+        let out = a.mean();
+
+        let out_grad_array = array![[1.]];
+        out.__backward(&out_grad_array);
+
+        assert_eq!(a.grad().as_ref().unwrap(), array![[0.25, 0.25], [0.25, 0.25]]);
+    }
+
+    #[test]
+    fn sum_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let out = a.sum();
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[10.]]);
+    }
+
+    #[test]
+    fn sum_grad_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+        let out = a.sum();
+
+        let out_grad_array = array![[1.]];
+        out.__backward(&out_grad_array);
+
+        assert_eq!(a.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
     }
 }
