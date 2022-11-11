@@ -320,9 +320,31 @@ mod reduce_ops_tests {
     }
 
     #[test]
+    fn mean_grad_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+        let out = a.mean();
+
+        let out_grad_array = array![[1.]];
+        out.__backward(&out_grad_array);
+
+        assert_eq!(a.grad().as_ref().unwrap(), array![[0.25, 0.25], [0.25, 0.25]]);
+    }
+
+    #[test]
     fn sum_test() {
         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
         let out = a.sum();
         assert_eq!(&out.ndarray() as &Array2<f64>, array![[10.]]);
+    }
+
+    #[test]
+    fn sum_grad_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+        let out = a.sum();
+
+        let out_grad_array = array![[1.]];
+        out.__backward(&out_grad_array);
+
+        assert_eq!(a.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
     }
 }
