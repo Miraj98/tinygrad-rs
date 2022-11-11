@@ -84,6 +84,10 @@ impl Add {
             rhs: Rc::clone(b),
         }
     }
+
+    pub fn get_raw_ptr(&self) -> (*const Tensor, *const Tensor) {
+        (self.lhs.as_ref() as *const Tensor, self.rhs.as_ref() as *const Tensor)
+    }
 }
 
 #[derive(Debug)]
@@ -135,6 +139,10 @@ impl Sub {
             lhs: Rc::clone(a),
             rhs: Rc::clone(b),
         }
+    }
+
+    pub fn get_raw_ptr(&self) -> (*const Tensor, *const Tensor) {
+        (self.lhs.as_ref() as *const Tensor, self.rhs.as_ref() as *const Tensor)
     }
 }
 
@@ -190,6 +198,10 @@ impl Mul {
             lhs: Rc::clone(a),
             rhs: Rc::clone(b),
         }
+    }
+
+    pub fn get_raw_ptr(&self) -> (*const Tensor, *const Tensor) {
+        (self.lhs.as_ref() as *const Tensor, self.rhs.as_ref() as *const Tensor)
     }
 }
 
@@ -248,5 +260,9 @@ impl Matmul {
             lhs: Rc::clone(a),
             rhs: Rc::clone(b),
         }
+    }
+
+    pub fn get_raw_ptr(&self) -> (*const Tensor, *const Tensor) {
+        (self.lhs.as_ref() as *const Tensor, self.rhs.as_ref() as *const Tensor)
     }
 }

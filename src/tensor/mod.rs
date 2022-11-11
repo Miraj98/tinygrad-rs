@@ -4,6 +4,7 @@ pub mod tensor_ref;
 use ndarray::Array2;
 use ops::binary_ops::Add;
 use ops::OpFunction;
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::{
     cell::{Cell, UnsafeCell},
@@ -11,9 +12,9 @@ use std::{
 };
 use tensor_ref::{BorrowRef, Ref};
 
-use self::ops::binary_ops::{BinaryOps, Matmul, Mul, Sub};
-use self::ops::reduce_ops::{Mean, ReduceOps, Sum};
-use self::ops::unary_ops::{Sigmoid, Square, UnaryOps};
+use self::ops::binary_ops::{BinaryOpType, BinaryOps, Matmul, Mul, Sub};
+use self::ops::reduce_ops::{Mean, ReduceOpType, ReduceOps, Sum};
+use self::ops::unary_ops::{Sigmoid, Square, UnaryOpType, UnaryOps};
 use self::ops::OpType;
 
 #[derive(Debug)]
@@ -78,8 +79,134 @@ impl Tensor {
         unsafe { *self.grad_value.get() = grad };
     }
 
+    fn deepwalk(&self) -> Vec<*const Tensor> {
+        let mut visited = HashSet::<*const Tensor>::new();
+        let mut added = HashSet::<*const Tensor>::new();
+        let mut work_stack = Vec::<*const Tensor>::new();
+
+        let mut topo = Vec::<*const Tensor>::new();
+        work_stack.push(self as *const Tensor);
+
+        while work_stack.len() > 0 {
+            if let Some(t) = work_stack.pop() {
+                if visited.contains(&t) {
+                    if !added.contains(&t) {
+                        topo.push(t);
+                        added.insert(t);
+                    }
+                } else {
+                    visited.insert(t);
+                    unsafe {
+                        match &(*t).ctx {
+                            OpType::Noop => {
+                                if !added.contains(&t) {
+                                    topo.push(t);
+                                    added.insert(t);
+                                }
+                            }
+                            OpType::BinaryOp(BinaryOpType::Add(a)) => {
+                                work_stack.push(t);
+                                let (lhs_ptr, rhs_ptr) = a.get_raw_ptr();
+                                if !visited.contains(&lhs_ptr) {
+                                    work_stack.push(lhs_ptr);
+                                }
+
+                                if !visited.contains(&rhs_ptr) {
+                                    work_stack.push(rhs_ptr);
+                                }
+                            }
+                            OpType::BinaryOp(BinaryOpType::Sub(a)) => {
+                                work_stack.push(t);
+                                let (lhs_ptr, rhs_ptr) = a.get_raw_ptr();
+                                if !visited.contains(&lhs_ptr) {
+                                    work_stack.push(lhs_ptr);
+                                }
+
+                                if !visited.contains(&rhs_ptr) {
+                                    work_stack.push(rhs_ptr);
+                                }
+                            }
+                            OpType::BinaryOp(BinaryOpType::Mul(a)) => {
+                                work_stack.push(t);
+                                let (lhs_ptr, rhs_ptr) = a.get_raw_ptr();
+                                if !visited.contains(&lhs_ptr) {
+                                    work_stack.push(lhs_ptr);
+                                }
+
+                                if !visited.contains(&rhs_ptr) {
+                                    work_stack.push(rhs_ptr);
+                                }
+                            }
+                            OpType::BinaryOp(BinaryOpType::Matmul(a)) => {
+                                work_stack.push(t);
+                                let (lhs_ptr, rhs_ptr) = a.get_raw_ptr();
+                                if !visited.contains(&lhs_ptr) {
+                                    work_stack.push(lhs_ptr);
+                                }
+
+                                if !visited.contains(&rhs_ptr) {
+                                    work_stack.push(rhs_ptr);
+                                }
+                            }
+                            OpType::UnaryOp(UnaryOpType::Sigmoid(a)) => {
+                                work_stack.push(t);
+                                let lhs_ptr = a.get_raw_ptr();
+                                if !visited.contains(&lhs_ptr) {
+                                    work_stack.push(lhs_ptr);
+                                }
+                            }
+                            OpType::UnaryOp(UnaryOpType::Square(a)) => {
+                                work_stack.push(t);
+                                let lhs_ptr = a.get_raw_ptr();
+                                if !visited.contains(&lhs_ptr) {
+                                    work_stack.push(lhs_ptr);
+                                }
+                            }
+                            OpType::ReduceOp(ReduceOpType::Mean(a)) => {
+                                work_stack.push(t);
+                                let lhs_ptr = a.get_raw_ptr();
+                                if !visited.contains(&lhs_ptr) {
+                                    work_stack.push(lhs_ptr);
+                                }
+                            }
+                            OpType::ReduceOp(ReduceOpType::Sum(a)) => {
+                                work_stack.push(t);
+                                let lhs_ptr = a.get_raw_ptr();
+                                if !visited.contains(&lhs_ptr) {
+                                    work_stack.push(lhs_ptr);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        topo.reverse();
+        topo
+    }
+
     fn __backward(&self, incoming_grad: &Array2<f64>) {
         self.ctx.__backward(incoming_grad);
+    }
+
+    pub fn backward(&self) {
+        let tensors = self.deepwalk();
+        let self_grad = Array2::<f64>::ones(self.dim());
+
+        for t in &tensors {
+            unsafe {
+                let pg = (**t).grad();
+                if let Some(p_grad) = pg.as_ref() {
+                    (**t).__backward(p_grad);
+                } else {
+                    (**t).__backward(&self_grad);
+                }
+            }
+            
+        }
+
+        self.update_grad(Some(self_grad));
     }
 }
 
@@ -327,7 +454,10 @@ mod reduce_ops_tests {
         let out_grad_array = array![[1.]];
         out.__backward(&out_grad_array);
 
-        assert_eq!(a.grad().as_ref().unwrap(), array![[0.25, 0.25], [0.25, 0.25]]);
+        assert_eq!(
+            a.grad().as_ref().unwrap(),
+            array![[0.25, 0.25], [0.25, 0.25]]
+        );
     }
 
     #[test]

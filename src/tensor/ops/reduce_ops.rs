@@ -76,6 +76,10 @@ impl Mean {
             lhs: Rc::clone(a),
         }
     }
+
+    pub fn get_raw_ptr(&self) -> *const Tensor {
+        self.lhs.as_ref() as *const Tensor
+    }
 }
 
 #[derive(Debug)]
@@ -124,5 +128,9 @@ impl Sum {
         Self {
             lhs: Rc::clone(a),
         }
+    }
+
+    pub fn get_raw_ptr(&self) -> *const Tensor {
+        self.lhs.as_ref() as *const Tensor
     }
 }

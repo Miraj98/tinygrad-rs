@@ -71,6 +71,10 @@ impl Sigmoid {
     pub fn from(a: &Rc<Tensor>) -> Self {
         Self { lhs: Rc::clone(a) }
     }
+    
+    pub fn get_raw_ptr(&self) -> *const Tensor {
+        self.lhs.as_ref() as *const Tensor
+    }
 }
 
 #[derive(Debug)]
@@ -111,5 +115,9 @@ impl OpFunction for Square {
 impl Square {
     pub fn from(a: &Rc<Tensor>) -> Self {
         Self { lhs: Rc::clone(a) }
+    }
+
+    pub fn get_raw_ptr(&self) -> *const Tensor {
+        self.lhs.as_ref() as *const Tensor
     }
 }
