@@ -12,7 +12,7 @@ use std::{
 use tensor_ref::{BorrowRef, Ref};
 
 use self::ops::binary_ops::{BinaryOps, Matmul, Mul, Sub};
-use self::ops::reduce_ops::{ReduceOps, Mean, Sum};
+use self::ops::reduce_ops::{Mean, ReduceOps, Sum};
 use self::ops::unary_ops::{Sigmoid, Square, UnaryOps};
 use self::ops::OpType;
 
@@ -75,7 +75,11 @@ impl Tensor {
     }
 
     pub fn update_grad(&self, grad: Option<Array2<f64>>) {
-        unsafe { *self.grad_value.get() =  grad };
+        unsafe { *self.grad_value.get() = grad };
+    }
+
+    fn __backward(&self, incoming_grad: &Array2<f64>) {
+        self.ctx.__backward(incoming_grad);
     }
 }
 
@@ -164,6 +168,19 @@ mod binary_ops_tests {
     }
 
     #[test]
+    fn add_tensors_grad_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+        let b = Tensor::new(array![[2., 3.], [4., 5.]], Some(true));
+        let out = a.add(&b);
+
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out.__backward(&out_grad_array);
+
+        assert_eq!(a.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
+        assert_eq!(b.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
+    }
+
+    #[test]
     fn sub_tensors() {
         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
         let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
@@ -172,11 +189,37 @@ mod binary_ops_tests {
     }
 
     #[test]
+    fn sub_tensors_grad_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+        let b = Tensor::new(array![[2., 3.], [4., 5.]], Some(true));
+        let out = b.sub(&a);
+
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out.__backward(&out_grad_array);
+
+        assert_eq!(a.grad().as_ref().unwrap(), array![[-1., -1.], [-1., -1.]]);
+        assert_eq!(b.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
+    }
+
+    #[test]
     fn mul_tensors() {
         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
         let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
         let out = a.mul(&b);
         assert_eq!(&out.ndarray() as &Array2<f64>, array![[2., 6.], [12., 20.]]);
+    }
+
+    #[test]
+    fn mul_tensors_grad_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+        let b = Tensor::new(array![[2., 3.], [4., 5.]], Some(true));
+        let out = a.mul(&b);
+
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out.__backward(&out_grad_array);
+
+        assert_eq!(a.grad().as_ref().unwrap(), array![[2., 3.], [4., 5.]]);
+        assert_eq!(b.grad().as_ref().unwrap(), array![[1., 2.], [3., 4.]]);
     }
 
     #[test]
@@ -189,12 +232,31 @@ mod binary_ops_tests {
             array![[10., 13.], [22., 29.]]
         );
     }
+
+    #[test]
+    fn matmul_tensors_grad_test() {
+        let a = Tensor::new(array![[1., 2., 3.], [4., 5., 6.]], Some(true));
+        let b = Tensor::new(array![[2., 3.], [4., 5.], [6., 7.]], Some(true));
+        let out = a.matmul(&b);
+
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out.__backward(&out_grad_array);
+
+        assert_eq!(
+            a.grad().as_ref().unwrap(),
+            array![[3., 7., 11.], [3., 7., 11.]]
+        );
+        assert_eq!(
+            b.grad().as_ref().unwrap(),
+            array![[5., 5.], [7., 7.], [9., 9.]]
+        );
+    }
 }
 
 #[cfg(test)]
 mod unary_ops_tests {
+    use crate::tensor::{ops::unary_ops::UnaryOps, Tensor};
     use ndarray::{array, Array2};
-    use crate::tensor::{Tensor, ops::unary_ops::UnaryOps};
 
     #[test]
     fn sigmoid_test() {
@@ -202,8 +264,10 @@ mod unary_ops_tests {
         let out = a.sigmoid();
         assert_eq!(
             &out.ndarray() as &Array2<f64>,
-            array![[0.7310585786300049, 0.8807970779778823],
-            [0.9525741268224334, 0.9820137900379085]]
+            array![
+                [0.7310585786300049, 0.8807970779778823],
+                [0.9525741268224334, 0.9820137900379085]
+            ]
         );
     }
 
@@ -217,17 +281,14 @@ mod unary_ops_tests {
 
 #[cfg(test)]
 mod reduce_ops_tests {
+    use crate::tensor::{ops::reduce_ops::ReduceOps, Tensor};
     use ndarray::{array, Array2};
-    use crate::tensor::{Tensor, ops::{reduce_ops::ReduceOps}};
 
     #[test]
     fn mean_test() {
         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
         let out = a.mean();
-        assert_eq!(
-            &out.ndarray() as &Array2<f64>,
-            array![[2.5]]
-        );
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[2.5]]);
     }
 
     #[test]

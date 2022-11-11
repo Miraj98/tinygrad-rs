@@ -227,17 +227,18 @@ impl OpFunction for Matmul {
         let lhs_t = lhs.t();
 
         if let Some(curr_grad_lhs) = self.lhs.grad().as_ref() {
-            let grad = curr_grad_lhs + (rhs_t.dot(incoming_grad));
+            let grad = curr_grad_lhs + (incoming_grad.dot(&rhs_t));
             self.lhs.update_grad(Some(grad));
         } else {
-            self.lhs.update_grad(Some(rhs_t.dot(incoming_grad)));
+            self.lhs.update_grad(Some(incoming_grad.dot(&rhs_t)));
         }
 
         if let Some(curr_grad_rhs) = self.rhs.grad().as_ref() {
-            let grad = curr_grad_rhs - (incoming_grad.dot(&lhs_t));
+            let grad = curr_grad_rhs - (lhs_t.dot(incoming_grad));
             self.rhs.update_grad(Some(grad));
         } else {
-            self.rhs.update_grad(Some(incoming_grad.dot(&lhs_t)));
+            self.rhs.update_grad(Some(lhs_t.dot(incoming_grad)));
+
         }
     }
 }

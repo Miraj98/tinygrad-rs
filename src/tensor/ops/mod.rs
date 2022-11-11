@@ -16,7 +16,7 @@ pub enum OpType {
 }
 
 impl OpType {
-    fn __backward(&self, incoming_grad: &Array2<f64>) {
+    pub fn __backward(&self, incoming_grad: &Array2<f64>) {
         match self {
            OpType::BinaryOp(a) => a.__backward(incoming_grad),
            OpType::UnaryOp(a) => a.__backward(incoming_grad),
