@@ -1,40 +1,121 @@
 pub mod ops;
+pub mod tensor_ref;
 
-use std::cell::{UnsafeCell, Cell};
 use ndarray::Array2;
+use ops::binary_ops::Add;
 use ops::OpFunction;
+use std::rc::Rc;
+use std::{
+    cell::{Cell, UnsafeCell},
+    ptr::NonNull,
+};
+use tensor_ref::{BorrowRef, Ref};
 
-enum RefState {
-    Exclusive,
-    Shared(u32),
-    Unshared,
+use self::ops::binary_ops::BinaryOps;
+use self::ops::OpType;
+
+pub struct Noop;
+impl OpFunction for Noop {
+    type Output = Option<u8>;
+
+    fn backward(&self) {}
+
+    fn forward(&self, requires_grad: bool) -> Self::Output {
+        None
+    }
+}
+impl Noop {
+    pub fn new() -> Noop {
+        Noop
+    }
 }
 
-pub struct Tensor<Op: OpFunction> {
-    pub data: UnsafeCell<Array2<f64>>,
-    pub grad: UnsafeCell<Array2<f64>>,
-    __grad_ref: Cell<RefState>,
-    __data_ref: Cell<RefState>,
-    ctx: Option<Op>
+#[derive(Debug)]
+pub struct Tensor {
+    data: UnsafeCell<Array2<f64>>,
+    grad_value: UnsafeCell<Option<Array2<f64>>>,
+    grad_borrow: Cell<isize>,
+    data_borrow: Cell<isize>,
+    ctx: OpType,
+    requires_grad: Cell<Option<bool>>,
 }
 
-impl<Op: OpFunction> Tensor<Op> {
-    pub fn grad(&self) -> &Array2<f64> {
-        todo!("Increase __grad_ref reference count");
-        unsafe {& *self.grad.get() }
+impl Tensor {
+    fn __new(a: Array2<f64>, op: OpType, requires_grad: Option<bool>) -> Rc<Tensor> {
+        Rc::new(Tensor {
+            data: UnsafeCell::new(a),
+            grad_value: UnsafeCell::new(None),
+            grad_borrow: Cell::new(0),
+            data_borrow: Cell::new(0),
+            ctx: op,
+            requires_grad: Cell::new(requires_grad),
+        })
+    }
+
+    pub fn new(a: Array2<f64>, requires_grad: Option<bool>) -> Rc<Tensor> {
+        Tensor::__new(a, OpType::Noop, requires_grad)
+    }
+
+    pub fn try_grad(&self) -> Result<Ref<Option<Array2<f64>>>, isize> {
+        match BorrowRef::new(&self.grad_borrow) {
+            Some(b) => {
+                let value = unsafe { NonNull::new_unchecked(self.grad_value.get()) };
+                Ok(Ref { value, borrow: b })
+            }
+            None => Err(self.grad_borrow.get()),
+        }
+    }
+
+    pub fn grad(&self) -> Ref<'_, Option<Array2<f64>>> {
+        self.try_grad().expect("already mutably borrowed")
     }
 
     pub fn dim(&self) -> (usize, usize) {
-        todo!()
+        unsafe { (*self.data.get()).dim() }
     }
 
-    pub fn ndarray(&self) -> &Array2<f64> {
-        todo!()
+    pub fn try_ndarray(&self) -> Result<Ref<Array2<f64>>, isize> {
+        match BorrowRef::new(&self.data_borrow) {
+            Some(b) => {
+                let value = unsafe { NonNull::new_unchecked(self.data.get()) };
+                Ok(Ref { value, borrow: b })
+            }
+            None => Err(self.data_borrow.get()),
+        }
+    }
+
+    pub fn ndarray(&self) -> Ref<'_, Array2<f64>> {
+        self.try_ndarray().expect("already mutably borrowed")
     }
 }
 
-impl<Op: OpFunction> Drop for Tensor<Op> {
-    fn drop(&mut self) {
-        todo!()
+impl BinaryOps for Rc<Tensor> {
+    type Value = Rc<Tensor>;
+
+    fn add(&self, x: &Self::Value) -> Rc<Tensor> {
+        let requires_grad = self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
+        let op = Add::from(self, x);
+        let output = op.forward(requires_grad);
+        output
+    }
+
+    // fn add(&self, x: &Self::Value) ->  Rc<Tensor<Add<Op>>> {
+    //     // Tensor::_new(
+    //     //     a,
+    //     //     Some(Add::new(Rc::clone(self), Rc::clone(x))),
+    //     //     Some(requires_grad),
+    //     // )
+    // }
+}
+
+#[cfg(test)]
+mod tests {
+    use ndarray::array;
+
+    use super::Tensor;
+
+    #[test]
+    fn add_tensors() {
+        let s = Tensor::new(array![[1.]], Some(true));
     }
 }

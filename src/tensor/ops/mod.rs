@@ -10,11 +10,12 @@ use reduce_ops::*;
 pub enum OpType {
     BinaryOp(BinaryOpType),
     UnaryOp(UnaryOpType),
-    ReduceOp(ReduceOpType)
+    ReduceOp(ReduceOpType),
+    Noop,
 }
 
 pub trait OpFunction {
     type Output;
-    fn forward(&self) -> Self::Output;
+    fn forward(&self, requires_grad: bool) -> Self::Output;
     fn backward(&self);
 }
