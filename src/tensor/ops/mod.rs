@@ -14,6 +14,15 @@ pub enum OpType {
     Noop,
 }
 
+impl OpType {
+    fn __backward(&self) {
+        match self {
+           OpType::BinaryOp(b) => b.__backward(),
+           _ => {}
+        };
+    }
+}
+
 pub trait OpFunction {
     type Output;
     fn forward(&self, requires_grad: bool) -> Self::Output;

@@ -15,6 +15,17 @@ pub enum BinaryOpType {
     Matmul(Matmul),
 }
 
+impl BinaryOpType {
+    pub fn __backward(&self) {
+        match self {
+            BinaryOpType::Add(a) => a.backward(),
+            BinaryOpType::Sub(a) => a.backward(),
+            BinaryOpType::Mul(a) => a.backward(),
+            BinaryOpType::Matmul(a) => a.backward(),
+        };
+    }
+}
+
 pub trait BinaryOps {
     type Value;
     fn add(&self, x: &Self::Value) -> Rc<Tensor>;

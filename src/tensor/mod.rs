@@ -14,22 +14,6 @@ use tensor_ref::{BorrowRef, Ref};
 use self::ops::binary_ops::{BinaryOps, Sub, Mul, Matmul};
 use self::ops::OpType;
 
-pub struct Noop;
-impl OpFunction for Noop {
-    type Output = Option<u8>;
-
-    fn backward(&self) {}
-
-    fn forward(&self, requires_grad: bool) -> Self::Output {
-        None
-    }
-}
-impl Noop {
-    pub fn new() -> Noop {
-        Noop
-    }
-}
-
 #[derive(Debug)]
 pub struct Tensor {
     data: UnsafeCell<Array2<f64>>,
@@ -92,7 +76,7 @@ impl Tensor {
 impl BinaryOps for Rc<Tensor> {
     type Value = Rc<Tensor>;
 
-    fn add(&self, x: &Self::Value) -> Rc<Tensor> {
+    fn add(&self, x: &Self::Value) -> Self::Value {
         let requires_grad = self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
         let op = Add::from(self, x);
         let output = op.forward(requires_grad);
@@ -124,7 +108,6 @@ impl BinaryOps for Rc<Tensor> {
 #[cfg(test)]
 mod tests {
     use ndarray::{array, Array2};
-
     use super::{Tensor, ops::binary_ops::BinaryOps};
 
     #[test]
