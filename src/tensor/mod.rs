@@ -73,6 +73,10 @@ impl Tensor {
     pub fn ndarray(&self) -> Ref<'_, Array2<f64>> {
         self.try_ndarray().expect("already mutably borrowed")
     }
+
+    pub fn update_grad(&self, grad: Option<Array2<f64>>) {
+        unsafe { *self.grad_value.get() =  grad };
+    }
 }
 
 impl BinaryOps for Rc<Tensor> {

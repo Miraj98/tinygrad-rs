@@ -16,12 +16,12 @@ pub enum BinaryOpType {
 }
 
 impl BinaryOpType {
-    pub fn __backward(&self) {
+    pub fn __backward(&self, incoming_grad: &Array2<f64>) {
         match self {
-            BinaryOpType::Add(a) => a.backward(),
-            BinaryOpType::Sub(a) => a.backward(),
-            BinaryOpType::Mul(a) => a.backward(),
-            BinaryOpType::Matmul(a) => a.backward(),
+            BinaryOpType::Add(a) => a.backward(incoming_grad),
+            BinaryOpType::Sub(a) => a.backward(incoming_grad),
+            BinaryOpType::Mul(a) => a.backward(incoming_grad),
+            BinaryOpType::Matmul(a) => a.backward(incoming_grad),
         };
     }
 }
@@ -61,8 +61,20 @@ impl OpFunction for Add {
         })
     }
 
-    fn backward(&self) {
-        todo!()
+    fn backward(&self, incoming_grad: &Array2<f64>) {
+        if let Some(curr_grad_lhs) = self.lhs.grad().as_ref() {
+            let grad = curr_grad_lhs + incoming_grad;
+            self.lhs.update_grad(Some(grad));
+        } else {
+            self.lhs.update_grad(Some(incoming_grad.to_owned()));
+        }
+
+        if let Some(curr_grad_rhs) = self.rhs.grad().as_ref() {
+            let grad = curr_grad_rhs + incoming_grad;
+            self.rhs.update_grad(Some(grad));
+        } else {
+            self.rhs.update_grad(Some(incoming_grad.to_owned()));
+        }
     }
 }
 impl Add {
@@ -101,8 +113,20 @@ impl OpFunction for Sub {
         })
     }
 
-    fn backward(&self) {
-        todo!()
+    fn backward(&self, incoming_grad: &Array2<f64>) {
+        if let Some(curr_grad_lhs) = self.lhs.grad().as_ref() {
+            let grad = curr_grad_lhs + incoming_grad;
+            self.lhs.update_grad(Some(grad));
+        } else {
+            self.lhs.update_grad(Some((incoming_grad).to_owned()));
+        }
+
+        if let Some(curr_grad_rhs) = self.rhs.grad().as_ref() {
+            let grad = curr_grad_rhs - incoming_grad;
+            self.rhs.update_grad(Some(grad));
+        } else {
+            self.rhs.update_grad(Some((-incoming_grad).to_owned()));
+        }
     }
 }
 impl Sub {
@@ -141,8 +165,23 @@ impl OpFunction for Mul {
         })
     }
 
-    fn backward(&self) {
-        todo!()
+    fn backward(&self, incoming_grad: &Array2<f64>) {
+        let rhs = &self.rhs.ndarray() as &Array2<f64>;
+        let lhs = &self.lhs.ndarray() as &Array2<f64>;
+
+        if let Some(curr_grad_lhs) = self.lhs.grad().as_ref() {
+            let grad = curr_grad_lhs + (rhs * incoming_grad);
+            self.lhs.update_grad(Some(grad));
+        } else {
+            self.lhs.update_grad(Some(rhs * incoming_grad));
+        }
+
+        if let Some(curr_grad_rhs) = self.rhs.grad().as_ref() {
+            let grad = curr_grad_rhs - (lhs * incoming_grad);
+            self.rhs.update_grad(Some(grad));
+        } else {
+            self.rhs.update_grad(Some(lhs * incoming_grad));
+        }
     }
 }
 impl Mul {
@@ -181,8 +220,23 @@ impl OpFunction for Matmul {
         })
     }
 
-    fn backward(&self) {
-        todo!()
+    fn backward(&self, incoming_grad: &Array2<f64>) {
+        let rhs = self.rhs.ndarray().t();
+        let lhs = self.lhs.ndarray().t();
+
+        if let Some(curr_grad_lhs) = self.lhs.grad().as_ref() {
+            let grad = curr_grad_lhs + (rhs.dot(incoming_grad));
+            self.lhs.update_grad(Some(grad));
+        } else {
+            self.lhs.update_grad(Some(rhs.dot(incoming_grad)));
+        }
+
+        if let Some(curr_grad_rhs) = self.rhs.grad().as_ref() {
+            let grad = curr_grad_rhs - (incoming_grad.dot(&lhs));
+            self.rhs.update_grad(Some(grad));
+        } else {
+            self.rhs.update_grad(Some(incoming_grad.dot(&lhs)));
+        }
     }
 }
 impl Matmul {
