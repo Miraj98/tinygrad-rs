@@ -13,6 +13,7 @@ use tensor_ref::{BorrowRef, Ref};
 
 use self::ops::binary_ops::{BinaryOps, Sub, Mul, Matmul};
 use self::ops::OpType;
+use self::ops::unary_ops::{UnaryOps, Sigmoid, Square};
 
 #[derive(Debug)]
 pub struct Tensor {
@@ -100,6 +101,23 @@ impl BinaryOps for Rc<Tensor> {
     fn matmul(&self, x: &Self::Value) -> Self::Value {
         let requires_grad = self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
         let op = Matmul::from(self, x);
+        let output = op.forward(requires_grad);
+        output
+    }
+}
+
+impl UnaryOps for Rc<Tensor> {
+    type Value = Rc<Tensor>;
+    fn sigmoid(&self) -> Self::Value {
+        let requires_grad = self.requires_grad.get().unwrap_or(false);
+        let op = Sigmoid::from(self);
+        let output = op.forward(requires_grad);
+        output
+    }
+
+    fn square(&self) -> Self::Value {
+        let requires_grad = self.requires_grad.get().unwrap_or(false);
+        let op = Square::from(self);
         let output = op.forward(requires_grad);
         output
     }
