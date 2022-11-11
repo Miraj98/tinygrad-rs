@@ -6,7 +6,7 @@ pub trait Dataloader {
     fn size(&self) -> u16;
 }
 
-pub const PX_SIZE: usize = 2;
+pub const PX_SIZE: usize = 28;
 
 pub mod mnist {
     use ndarray::Array2;

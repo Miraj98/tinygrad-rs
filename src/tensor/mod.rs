@@ -5,7 +5,9 @@ use self::ops::binary_ops::{BinaryOpType, BinaryOps, Matmul, Mul, Sub};
 use self::ops::reduce_ops::{Mean, ReduceOpType, ReduceOps, Sum};
 use self::ops::unary_ops::{Sigmoid, Square, UnaryOpType, UnaryOps};
 use self::ops::OpType;
-use ndarray::Array2;
+use ndarray::{Array2, Dim, ShapeBuilder};
+use ndarray_rand::rand_distr::StandardNormal;
+use ndarray_rand::RandomExt;
 use ops::binary_ops::Add;
 use ops::OpFunction;
 use std::collections::HashSet;
@@ -23,7 +25,7 @@ pub struct Tensor {
     grad_borrow: Cell<isize>,
     data_borrow: Cell<isize>,
     ctx: OpType,
-    requires_grad: Cell<Option<bool>>,
+    pub requires_grad: Cell<Option<bool>>,
 }
 
 impl Tensor {
@@ -39,6 +41,34 @@ impl Tensor {
     }
 
     pub fn new(a: Array2<f64>, requires_grad: Option<bool>) -> Rc<Tensor> {
+        Tensor::__new(a, OpType::Noop, requires_grad)
+    }
+
+    pub fn from(a: &Array2<f64>, requires_grad: Option<bool>) -> Rc<Tensor> {
+        Tensor::__new(a.to_owned(), OpType::Noop, requires_grad)
+    }
+
+    pub fn randn<Sh>(shape: Sh, requires_grad: Option<bool>) -> Rc<Tensor>
+    where
+        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
+    {
+        let a = Array2::<f64>::random(shape, StandardNormal);
+        Tensor::__new(a, OpType::Noop, requires_grad)
+    }
+
+    pub fn zeros<Sh>(shape: Sh, requires_grad: Option<bool>) -> Rc<Tensor>
+    where
+        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
+    {
+        let a = Array2::<f64>::zeros(shape);
+        Tensor::__new(a, OpType::Noop, requires_grad)
+    }
+
+    pub fn ones<Sh>(shape: Sh, requires_grad: Option<bool>) -> Rc<Tensor>
+    where
+        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
+    {
+        let a = Array2::<f64>::ones(shape);
         Tensor::__new(a, OpType::Noop, requires_grad)
     }
 
@@ -206,40 +236,78 @@ impl Tensor {
 
         self.update_grad(Some(self_grad));
     }
+
+    pub fn zero_grad(&self) {
+        let tensors = self.__deepwalk();
+        for t in &tensors {
+            unsafe {
+                (**t).update_grad(None);
+            }
+        }
+    }
 }
 
 impl BinaryOps for Rc<Tensor> {
     type Value = Rc<Tensor>;
 
     fn add(&self, x: &Self::Value) -> Self::Value {
-        let requires_grad =
-            self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
+        let has_none = self.requires_grad.get().is_none() || x.requires_grad.get().is_none();
+        let requires_grad = (has_none
+            && (self.requires_grad.get().unwrap_or(false)
+                || x.requires_grad.get().unwrap_or(false)))
+            || (!has_none
+                && (self.requires_grad.get().unwrap_or(false)
+                    && x.requires_grad.get().unwrap_or(false)));
         let op = Add::from(self, x);
         let output = op.forward(requires_grad);
         output
     }
 
     fn sub(&self, x: &Self::Value) -> Self::Value {
-        let requires_grad =
-            self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
+        let has_none = self.requires_grad.get().is_none() || x.requires_grad.get().is_none();
+        let requires_grad = (has_none
+            && (self.requires_grad.get().unwrap_or(false)
+                || x.requires_grad.get().unwrap_or(false)))
+            || (!has_none
+                && (self.requires_grad.get().unwrap_or(false)
+                    && x.requires_grad.get().unwrap_or(false)));
         let op = Sub::from(self, x);
         let output = op.forward(requires_grad);
         output
     }
 
     fn mul(&self, x: &Self::Value) -> Self::Value {
-        let requires_grad =
-            self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
+        let has_none = self.requires_grad.get().is_none() || x.requires_grad.get().is_none();
+        let requires_grad = (has_none
+            && (self.requires_grad.get().unwrap_or(false)
+                || x.requires_grad.get().unwrap_or(false)))
+            || (!has_none
+                && (self.requires_grad.get().unwrap_or(false)
+                    && x.requires_grad.get().unwrap_or(false)));
         let op = Mul::from(self, x);
         let output = op.forward(requires_grad);
         output
     }
 
     fn matmul(&self, x: &Self::Value) -> Self::Value {
-        let requires_grad =
-            self.requires_grad.get().unwrap_or(false) || x.requires_grad.get().unwrap_or(false);
+        let has_none = self.requires_grad.get().is_none() || x.requires_grad.get().is_none();
+        let requires_grad = (has_none
+            && (self.requires_grad.get().unwrap_or(false)
+                || x.requires_grad.get().unwrap_or(false)))
+            || (!has_none
+                && (self.requires_grad.get().unwrap_or(false)
+                    && x.requires_grad.get().unwrap_or(false)));
         let op = Matmul::from(self, x);
         let output = op.forward(requires_grad);
+        output
+    }
+
+    fn mul_scalar(&self, x: f64) -> Self::Value {
+        let requires_grad = self.requires_grad.get();
+        let a = Array2::<f64>::ones(self.dim()) * x;
+        let at = Tensor::new(a, requires_grad);
+        let op = Mul::from(self, &at);
+        let output = op.forward(requires_grad.unwrap_or(false));
         output
     }
 }

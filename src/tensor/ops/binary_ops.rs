@@ -30,6 +30,7 @@ pub trait BinaryOps {
     type Value;
     fn add(&self, x: &Self::Value) -> Rc<Tensor>;
     fn mul(&self, x: &Self::Value) -> Self::Value;
+    fn mul_scalar(&self, x: f64) -> Self::Value;
     fn sub(&self, x: &Self::Value) -> Self::Value;
     fn matmul(&self, x: &Self::Value) -> Self::Value;
 }
