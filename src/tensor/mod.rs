@@ -244,7 +244,7 @@ mod binary_ops_tests {
 
         assert_eq!(
             a.grad().as_ref().unwrap(),
-            array![[3., 7., 11.], [3., 7., 11.]]
+            array![[5., 9., 13.], [5., 9., 13.]]
         );
         assert_eq!(
             b.grad().as_ref().unwrap(),
