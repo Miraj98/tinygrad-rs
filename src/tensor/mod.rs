@@ -12,6 +12,7 @@ use std::{
 use tensor_ref::{BorrowRef, Ref};
 
 use self::ops::binary_ops::{BinaryOps, Matmul, Mul, Sub};
+use self::ops::reduce_ops::{ReduceOps, Mean, Sum};
 use self::ops::unary_ops::{Sigmoid, Square, UnaryOps};
 use self::ops::OpType;
 
@@ -127,6 +128,24 @@ impl UnaryOps for Rc<Tensor> {
     }
 }
 
+impl ReduceOps for Rc<Tensor> {
+    type Value = Rc<Tensor>;
+
+    fn mean(&self) -> Self::Value {
+        let requires_grad = self.requires_grad.get().unwrap_or(false);
+        let op = Mean::from(self);
+        let output = op.forward(requires_grad);
+        output
+    }
+
+    fn sum(&self) -> Self::Value {
+        let requires_grad = self.requires_grad.get().unwrap_or(false);
+        let op = Sum::from(self);
+        let output = op.forward(requires_grad);
+        output
+    }
+}
+
 #[cfg(test)]
 mod binary_ops_tests {
     use super::{ops::binary_ops::BinaryOps, Tensor};
@@ -170,8 +189,8 @@ mod binary_ops_tests {
 
 #[cfg(test)]
 mod unary_ops_tests {
-    use crate::tensor::{ops::unary_ops::UnaryOps, Tensor};
     use ndarray::{array, Array2};
+    use crate::tensor::{Tensor, ops::unary_ops::UnaryOps};
 
     #[test]
     fn sigmoid_test() {
@@ -179,10 +198,8 @@ mod unary_ops_tests {
         let out = a.sigmoid();
         assert_eq!(
             &out.ndarray() as &Array2<f64>,
-            array![
-                [0.7310585786300049, 0.8807970779778823],
-                [0.9525741268224334, 0.9820137900379085]
-            ]
+            array![[0.7310585786300049, 0.8807970779778823],
+            [0.9525741268224334, 0.9820137900379085]]
         );
     }
 
@@ -191,5 +208,28 @@ mod unary_ops_tests {
         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
         let out = a.square();
         assert_eq!(&out.ndarray() as &Array2<f64>, array![[1., 4.], [9., 16.]]);
+    }
+}
+
+#[cfg(test)]
+mod reduce_ops_tests {
+    use ndarray::{array, Array2};
+    use crate::tensor::{Tensor, ops::{reduce_ops::ReduceOps}};
+
+    #[test]
+    fn mean_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let out = a.mean();
+        assert_eq!(
+            &out.ndarray() as &Array2<f64>,
+            array![[2.5]]
+        );
+    }
+
+    #[test]
+    fn sum_test() {
+        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+        let out = a.sum();
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[10.]]);
     }
 }
