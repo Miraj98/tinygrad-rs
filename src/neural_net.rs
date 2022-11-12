@@ -1,7 +1,13 @@
-use std::{rc::Rc, iter::zip};
-use crate::{datasets::Dataloader, tensor::{Tensor, ops::{binary_ops::BinaryOps, unary_ops::UnaryOps, reduce_ops::ReduceOps}}};
-use ndarray::{Array2};
+use crate::{
+    datasets::Dataloader,
+    tensor::{
+        ops::{binary_ops::BinaryOps, reduce_ops::ReduceOps, unary_ops::UnaryOps},
+        Tensor,
+    },
+};
+use ndarray::Array2;
 use ndarray_stats::QuantileExt;
+use std::{iter::zip, rc::Rc};
 
 #[derive(Debug)]
 pub struct Model<T: Dataloader> {
@@ -32,14 +38,10 @@ impl<T: Dataloader> Model<T> {
     pub fn train(&mut self, batch_size: u16, epochs: u16) {
         let total_batches = self.dataloader.size() / batch_size;
         println!("Total batches {}", total_batches);
-
         for e in 0..epochs {
             for j in 0..total_batches {
-                println!("Current batch number - {}", j);
                 self.train_mini_batch(batch_size.into(), j.into(), 2.);
             }
-
-            println!("Completed epoch");
 
             // Test neural net performance every epoch
             let mut total_correct_pred = 0;
@@ -61,8 +63,10 @@ impl<T: Dataloader> Model<T> {
     }
 
     pub fn train_mini_batch(&mut self, batch_size: usize, batch_idx: usize, lr: f64) {
-        let mut w_grad_agg: Vec<Array2<f64>> = self.w.iter().map(|w| Array2::zeros(w.dim())).collect();
-        let mut b_grad_agg: Vec<Array2<f64>> = self.b.iter().map(|b| Array2::zeros(b.dim())).collect();
+        let mut w_grad_agg: Vec<Array2<f64>> =
+            self.w.iter().map(|w| Array2::zeros(w.dim())).collect();
+        let mut b_grad_agg: Vec<Array2<f64>> =
+            self.b.iter().map(|b| Array2::zeros(b.dim())).collect();
         let batch = self.dataloader.get_batch(batch_size, batch_idx);
 
         for (x, y) in batch {
@@ -74,12 +78,22 @@ impl<T: Dataloader> Model<T> {
             loss.zero_grad();
         }
 
-        for i in 0..self.w.len() {
-            let tw = Tensor::new((lr / batch_size as f64) * &w_grad_agg[i], None);
-            self.w[i] = self.w[i].sub(&tw);
+        let mut _w: Vec<Array2<f64>> = self.w.iter().map(|v| Array2::zeros(v.dim())).collect();
+        let mut _b: Vec<Array2<f64>> = self.b.iter().map(|v| Array2::zeros(v.dim())).collect();
 
-            let tb = Tensor::new((lr / batch_size as f64) * &b_grad_agg[i], None);
-            self.b[i] = self.b[i].sub(&tb);
+        for i in 0..self.w.len() {
+            let w = &self.w[i].ndarray() as &Array2<f64>;
+            let del_w = (lr / batch_size as f64) * &w_grad_agg[i];
+            _w[i] = w - del_w;
+
+            let b = &self.b[i].ndarray() as &Array2<f64>;
+            let del_b = (lr / batch_size as f64) * &b_grad_agg[i];
+            _b[i] = b - del_b;
+        }
+
+        for i in 0..self.w.len() {
+            self.w[i] = Tensor::from(&_w[i], Some(true));
+            self.b[i] = Tensor::from(&_b[i], Some(true));
         }
     }
 
@@ -87,7 +101,7 @@ impl<T: Dataloader> Model<T> {
         let input_tensor = Tensor::from(input, Some(false));
         let mut a = Tensor::zeros((1, 1), Some(false));
         let mut next_in = &input_tensor;
-        
+
         for (w, b) in zip(&self.w, &self.b) {
             a = w.matmul(next_in).add(b).sigmoid();
             next_in = &a;
@@ -106,10 +120,7 @@ impl<T: Dataloader> Model<T> {
         }
 
         // Find loss and call backward on it
-        let loss = a.sub(&yt)
-            .mul_scalar(0.5)
-            .square()
-            .mean();
+        let loss = a.sub(&yt).mul_scalar(0.5).square().mean();
         loss.backward();
         loss
     }

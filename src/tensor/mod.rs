@@ -245,6 +245,10 @@ impl Tensor {
             }
         }
     }
+
+    pub fn update_requires_grad(&self, requires_grad: Option<bool>) {
+        self.requires_grad.set(requires_grad);
+    }
 }
 
 impl BinaryOps for Rc<Tensor> {
