@@ -3,7 +3,7 @@ pub mod tensor_ref;
 
 use self::ops::binary_ops::{BinaryOpType, BinaryOps, Matmul, Mul, Sub};
 use self::ops::reduce_ops::{Mean, ReduceOpType, ReduceOps, Sum};
-use self::ops::unary_ops::{Sigmoid, Square, UnaryOpType, UnaryOps};
+use self::ops::unary_ops::{Sigmoid, Square, UnaryOpType, UnaryOps, ReLU};
 use self::ops::OpType;
 use ndarray::{Array2, Dim, ShapeBuilder};
 use ndarray_rand::rand_distr::StandardNormal;
@@ -191,6 +191,13 @@ impl Tensor {
                                     work_stack.push(lhs_ptr);
                                 }
                             }
+                            OpType::UnaryOp(UnaryOpType::ReLU(a)) => {
+                                work_stack.push(t);
+                                let lhs_ptr = a.get_raw_ptr();
+                                if !visited.contains(&lhs_ptr) {
+                                    work_stack.push(lhs_ptr);
+                                }
+                            }
                             OpType::ReduceOp(ReduceOpType::Mean(a)) => {
                                 work_stack.push(t);
                                 let lhs_ptr = a.get_raw_ptr();
@@ -328,6 +335,13 @@ impl UnaryOps for Rc<Tensor> {
     fn square(&self) -> Self::Value {
         let requires_grad = self.requires_grad.get().unwrap_or(false);
         let op = Square::from(self);
+        let output = op.forward(requires_grad);
+        output
+    }
+
+    fn relu(&self) -> Self::Value {
+        let requires_grad = self.requires_grad.get().unwrap_or(false);
+        let op = ReLU::from(self);
         let output = op.forward(requires_grad);
         output
     }
@@ -501,6 +515,24 @@ mod unary_ops_tests {
         out.__backward(&out_grad_array);
 
         assert_eq!(a.grad().as_ref().unwrap(), array![[2., 4.], [6., 8.]]);
+    }
+
+    #[test]
+    fn relu_test() {
+        let a = Tensor::new(array![[-1., 0.], [3., 4.]], None);
+        let out = a.relu();
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[0., 0.], [3., 4.]]);
+    }
+
+    #[test]
+    fn relu_grad_test() {
+        let a = Tensor::new(array![[-1., -8.], [3., 4.]], Some(true));
+        let out = a.relu();
+
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out.__backward(&out_grad_array);
+
+        assert_eq!(a.grad().as_ref().unwrap(), array![[0., 0.], [1., 1.]]);
     }
 }
 
