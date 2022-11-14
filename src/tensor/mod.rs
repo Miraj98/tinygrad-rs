@@ -3,7 +3,7 @@ pub mod tensor_ref;
 
 use self::ops::binary_ops::{BinaryOpType, BinaryOps, Matmul, Mul, Sub};
 use self::ops::reduce_ops::{Mean, ReduceOpType, ReduceOps, Sum};
-use self::ops::unary_ops::{Sigmoid, Square, UnaryOpType, UnaryOps, ReLU};
+use self::ops::unary_ops::{Sigmoid, Square, UnaryOpType, UnaryOps, ReLU, NaturalLog};
 use self::ops::OpType;
 use ndarray::{Array2, Dim, ShapeBuilder};
 use ndarray_rand::rand_distr::StandardNormal;
@@ -198,6 +198,13 @@ impl Tensor {
                                     work_stack.push(lhs_ptr);
                                 }
                             }
+                            OpType::UnaryOp(UnaryOpType::NaturalLog(a)) => {
+                                work_stack.push(t);
+                                let lhs_ptr = a.get_raw_ptr();
+                                if !visited.contains(&lhs_ptr) {
+                                    work_stack.push(lhs_ptr);
+                                }
+                            }
                             OpType::ReduceOp(ReduceOpType::Mean(a)) => {
                                 work_stack.push(t);
                                 let lhs_ptr = a.get_raw_ptr();
@@ -342,6 +349,13 @@ impl UnaryOps for Rc<Tensor> {
     fn relu(&self) -> Self::Value {
         let requires_grad = self.requires_grad.get().unwrap_or(false);
         let op = ReLU::from(self);
+        let output = op.forward(requires_grad);
+        output
+    }
+
+    fn ln(&self) -> Self::Value {
+        let requires_grad = self.requires_grad.get().unwrap_or(false);
+        let op = NaturalLog::from(self);
         let output = op.forward(requires_grad);
         output
     }
@@ -533,6 +547,24 @@ mod unary_ops_tests {
         out.__backward(&out_grad_array);
 
         assert_eq!(a.grad().as_ref().unwrap(), array![[0., 0.], [1., 1.]]);
+    }
+
+    #[test]
+    fn natural_log_test() {
+        let a = Tensor::new(array![[1., 10.], [3., 4.]], None);
+        let out = a.ln();
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[0., 2.302585092994046], [1.0986122886681098, 1.3862943611198906]]);
+    }
+
+    #[test]
+    fn natural_log_grad_test() {
+        let a = Tensor::new(array![[1., 10.], [3., 4.]], Some(true));
+        let out = a.ln();
+
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out.__backward(&out_grad_array);
+
+        assert_eq!(a.grad().as_ref().unwrap(), array![[1., 0.1], [0.3333333333333333, 0.25]]);
     }
 }
 

@@ -1,5 +1,3 @@
-pub fn cross_entropy() -> fn(out: &Rc<Tensor>, target: &Rc<Tensor>) -> Rc<Tensor> {
-    return |out: &Rc<Tensor>, target: &Rc<Tensor>| {
-
-    }
+pub fn cross_entropy(input: &Rc<Tensor>, target: &Rc<Tensor>) {
+    
 }
