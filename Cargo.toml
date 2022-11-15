@@ -11,3 +11,4 @@ image = {version = "0.24.3"}
 rand = {version = "0.8.5"}
 ndarray = {version = "0.15.6"}
 ndarray-stats = {version = "0.5.1"}
+plotters = {version = "0.3.1"}

@@ -1,18 +1,22 @@
 use crate::{
     datasets::Dataloader,
+    nn,
     tensor::{
-        ops::{binary_ops::BinaryOps, reduce_ops::ReduceOps, unary_ops::UnaryOps},
+        ops::{binary_ops::BinaryOps, unary_ops::UnaryOps},
         Tensor,
-    }, nn,
+    },
 };
 use ndarray::Array2;
 use ndarray_stats::QuantileExt;
+use plotters::prelude::*;
 use std::{iter::zip, rc::Rc};
 
 #[derive(Debug)]
 pub struct Model<T: Dataloader> {
     pub w: Vec<Rc<Tensor>>, // weights
     pub b: Vec<Rc<Tensor>>, // biases
+    _loss_chart: Vec<(f64, f64)>,
+    _lr_chart: Vec<(f64, f64)>,
     // pub z: Vec<Tensor>, // sum(w.x + b)
     // pub a: Vec<Tensor>, // sigmoid(z)
     dataloader: T,
@@ -23,6 +27,8 @@ impl<T: Dataloader> Model<T> {
         let mut m = Model {
             w: Vec::<Rc<Tensor>>::new(),
             b: Vec::<Rc<Tensor>>::new(),
+            _loss_chart: Vec::<(f64, f64)>::new(),
+            _lr_chart: Vec::<(f64, f64)>::new(),
             dataloader,
         };
 
@@ -35,8 +41,41 @@ impl<T: Dataloader> Model<T> {
         return m;
     }
 
+    fn _draw_chart(data: Vec<(f64, f64)>) {
+        let root =
+            BitMapBackend::new("accuracy.png", (640, 480)).into_drawing_area();
+        root.fill(&WHITE).unwrap();
+        let root = root.margin(10, 10, 10, 10);
+        // After this point, we should be able to draw construct a chart context
+        let mut chart = ChartBuilder::on(&root)
+            // Set the caption of the chart
+            .caption("Accuracy plot", ("sans-serif", 40).into_font())
+            // Set the size of the label region
+            .x_label_area_size(30)
+            .y_label_area_size(30)
+            // Finally attach a coordinate on the drawing area and make a chart context
+            .build_cartesian_2d(0f64..30f64, 75f64..100f64)
+            .unwrap();
+
+        chart
+            .configure_mesh()
+            // We can customize the maximum number of labels allowed for each axis
+            .x_labels(30)
+            .y_labels(25)
+            // We can also change the format of the label text
+            .y_label_formatter(&|x| format!("{:.3}", x))
+            .draw()
+            .unwrap();
+
+        // And we can draw something in the drawing area
+        chart.draw_series(LineSeries::new(data, &RED)).unwrap();
+        root.present().unwrap();
+    }
+
     pub fn train(&mut self, batch_size: u16, epochs: u16) {
         let total_batches = self.dataloader.size() / batch_size;
+        let mut plot_data = vec![(0., 0.); 30];
+
         println!("Total batches {}", total_batches);
         for e in 0..epochs {
             for j in 0..total_batches {
@@ -53,6 +92,9 @@ impl<T: Dataloader> Model<T> {
                     total_correct_pred = total_correct_pred + 1
                 }
             }
+            let total_correct_pred_percent = (total_correct_pred as f64) * 100. / 60_000.;
+            plot_data[e as usize] = (e as f64 + 1., total_correct_pred_percent);
+            // self._lr_chart.push((e as f64, total_correct_pred_percent));
 
             println!(
                 "{} NN perf score {}",
@@ -60,6 +102,7 @@ impl<T: Dataloader> Model<T> {
                 (total_correct_pred as f64) * 100. / 60_000.
             );
         }
+        Model::<T>::_draw_chart(plot_data);
     }
 
     pub fn train_mini_batch(&mut self, batch_size: usize, batch_idx: usize, lr: f64) {
@@ -123,10 +166,5 @@ impl<T: Dataloader> Model<T> {
         let loss = nn::cross_entropy(&a, &yt);
         loss.backward();
         loss
-
-
-        // let loss = a.sub(&yt).mul_scalar(0.5).square().mean();
-        // loss.backward();
-        // loss
     }
 }
