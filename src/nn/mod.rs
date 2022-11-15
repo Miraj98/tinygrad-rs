@@ -6,13 +6,16 @@ use std::rc::Rc;
 
 pub fn cross_entropy(input: &Rc<Tensor>, target: &Rc<Tensor>) -> Rc<Tensor> {
     assert_eq!(input.dim(), target.dim());
-    let lhs = target.mul(&input.ln());
+    let input_ln = input.ln();
+    let lhs = target.mul(&input_ln);
 
-    let ones = Tensor::ones(input.dim(), None);
-    let rhs = ones.sub(&target).mul(&ones.sub(&input).ln());
+    let ones = Tensor::ones(input.dim(), Some(true));
+    let _a = ones.sub(&input);
+    let _y = ones.sub(&target);
+    let rhs = _y.mul(&_a.ln());
 
-    let l = lhs.add(&rhs);
-    let loss = l.sum();
+    let l = lhs.add(&rhs).mul_scalar(-1.);
+    let loss = l.mean();
     loss
 }
 

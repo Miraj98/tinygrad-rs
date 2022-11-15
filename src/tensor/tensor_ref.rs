@@ -12,6 +12,7 @@ fn is_reading(x: isize) -> bool {
     x > UNUSED
 }
 
+#[derive(Debug)]
 pub struct BorrowRef<'b> {
     borrow: &'b Cell<isize>,
 }
@@ -84,6 +85,7 @@ impl<'b> BorrowRefMut<'b> {
     }
 }
 
+#[derive(Debug)]
 pub struct Ref<'cell, T: ?Sized> {
     pub value: NonNull<T>,
     pub borrow: BorrowRef<'cell>

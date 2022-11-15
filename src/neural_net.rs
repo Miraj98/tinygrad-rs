@@ -3,7 +3,7 @@ use crate::{
     tensor::{
         ops::{binary_ops::BinaryOps, reduce_ops::ReduceOps, unary_ops::UnaryOps},
         Tensor,
-    },
+    }, nn,
 };
 use ndarray::Array2;
 use ndarray_stats::QuantileExt;
@@ -120,8 +120,13 @@ impl<T: Dataloader> Model<T> {
         }
 
         // Find loss and call backward on it
-        let loss = a.sub(&yt).mul_scalar(0.5).square().mean();
+        let loss = nn::cross_entropy(&a, &yt);
         loss.backward();
         loss
+
+
+        // let loss = a.sub(&yt).mul_scalar(0.5).square().mean();
+        // loss.backward();
+        // loss
     }
 }
