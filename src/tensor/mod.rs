@@ -2,9 +2,11 @@ pub mod ops;
 pub mod tensor_ref;
 
 use self::ops::binary_ops::{BinaryOpType, BinaryOps, Matmul, Mul, Sub};
+use self::ops::processing_ops::ProcessingOpType;
 use self::ops::reduce_ops::{Mean, ReduceOpType, ReduceOps, Sum};
-use self::ops::unary_ops::{Sigmoid, Square, UnaryOpType, UnaryOps, ReLU, NaturalLog};
+use self::ops::unary_ops::{NaturalLog, ReLU, Sigmoid, Square, UnaryOpType, UnaryOps};
 use self::ops::OpType;
+use self::tensor_ref::RefMut;
 use ndarray::{Array2, Dim, ShapeBuilder};
 use ndarray_rand::rand_distr::StandardNormal;
 use ndarray_rand::RandomExt;
@@ -16,7 +18,7 @@ use std::{
     cell::{Cell, UnsafeCell},
     ptr::NonNull,
 };
-use tensor_ref::{BorrowRef, Ref};
+use tensor_ref::{BorrowRef, BorrowRefMut, Ref};
 
 #[derive(Debug)]
 pub struct Tensor {
@@ -100,8 +102,26 @@ impl Tensor {
         }
     }
 
+    pub fn try_ndarray_mut(&self) -> Result<RefMut<Array2<f64>>, isize> {
+        match BorrowRefMut::new(&self.data_borrow) {
+            Some(b) => {
+                let value = unsafe { NonNull::new_unchecked(self.data.get()) };
+                Ok(RefMut {
+                    value,
+                    borrow: b,
+                    marker: std::marker::PhantomData,
+                })
+            }
+            None => Err(self.data_borrow.get()),
+        }
+    }
+
     pub fn ndarray(&self) -> Ref<'_, Array2<f64>> {
         self.try_ndarray().expect("already mutably borrowed")
+    }
+
+    pub fn ndarray_mut(&self) -> RefMut<'_, Array2<f64>> {
+        self.try_ndarray_mut().expect("already mutably borrowed")
     }
 
     pub fn update_grad(&self, grad: Option<Array2<f64>>) {
@@ -217,6 +237,17 @@ impl Tensor {
                                 let lhs_ptr = a.get_raw_ptr();
                                 if !visited.contains(&lhs_ptr) {
                                     work_stack.push(lhs_ptr);
+                                }
+                            }
+                            OpType::ProcessingOp(ProcessingOpType::Conv2d(a)) => {
+                                work_stack.push(t);
+                                let (lhs_ptr, rhs_ptr) = a.get_raw_ptr();
+                                if !visited.contains(&lhs_ptr) {
+                                    work_stack.push(lhs_ptr);
+                                }
+
+                                if !visited.contains(&rhs_ptr) {
+                                    work_stack.push(rhs_ptr);
                                 }
                             }
                         }
@@ -553,7 +584,13 @@ mod unary_ops_tests {
     fn natural_log_test() {
         let a = Tensor::new(array![[1., 10.], [3., 4.]], None);
         let out = a.ln();
-        assert_eq!(&out.ndarray() as &Array2<f64>, array![[0., 2.302585092994046], [1.0986122886681098, 1.3862943611198906]]);
+        assert_eq!(
+            &out.ndarray() as &Array2<f64>,
+            array![
+                [0., 2.302585092994046],
+                [1.0986122886681098, 1.3862943611198906]
+            ]
+        );
     }
 
     #[test]
@@ -564,7 +601,10 @@ mod unary_ops_tests {
         let out_grad_array = array![[1., 1.], [1., 1.]];
         out.__backward(&out_grad_array);
 
-        assert_eq!(a.grad().as_ref().unwrap(), array![[1., 0.1], [0.3333333333333333, 0.25]]);
+        assert_eq!(
+            a.grad().as_ref().unwrap(),
+            array![[1., 0.1], [0.3333333333333333, 0.25]]
+        );
     }
 }
 

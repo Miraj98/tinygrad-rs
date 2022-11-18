@@ -65,7 +65,7 @@ impl Drop for BorrowRefMut<'_> {
 
 impl<'b> BorrowRefMut<'b> {
     #[inline]
-    fn new(borrow: &'b Cell<isize>) -> Option<BorrowRefMut<'b>> {
+    pub fn new(borrow: &'b Cell<isize>) -> Option<BorrowRefMut<'b>> {
         match borrow.get() {
             UNUSED => {
                 borrow.set(UNUSED - 1);
@@ -107,9 +107,9 @@ impl<T: ?Sized + fmt::Display> fmt::Display for Ref<'_, T> {
 }
 
 pub struct RefMut<'b, T: ?Sized + 'b> {
-    value: NonNull<T>,
-    borrow: BorrowRefMut<'b>,
-    marker: PhantomData<&'b mut T>,
+    pub(crate) value: NonNull<T>,
+    pub(crate) borrow: BorrowRefMut<'b>,
+    pub(crate) marker: PhantomData<&'b mut T>,
 }
 
 impl<T: ?Sized> Deref for RefMut<'_, T> {

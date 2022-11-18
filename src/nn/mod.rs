@@ -29,3 +29,36 @@ pub mod loss {
         loss
     }
 }
+
+pub mod layer {
+    use ndarray::arr2;
+
+    use crate::tensor::Tensor;
+    use std::rc::Rc;
+
+    // #[allow(non_snake_case)]
+    // pub fn Conv2d(
+    //     in_channels: usize,
+    //     feature_maps: usize,
+    //     kernel_dim: (usize, usize),
+    // ) -> impl Fn(&Vec<Rc<Tensor>>) -> (Vec<Vec<Rc<Tensor>>>, Vec<Vec<Rc<Tensor>>>, Vec<Rc<Tensor>>)  {
+    //     move |x| {
+    //         let mut w: Vec<Vec<Rc<Tensor>>> = Vec::new();
+    //         let mut b: Vec<Vec<Rc<Tensor>>> = Vec::new();
+    //         for _ in 0..feature_maps {
+    //             let mut _w: Vec<Rc<Tensor>> = Vec::new();
+    //             let mut _b: Vec<Rc<Tensor>> = Vec::new();
+    //             for _ in 0..in_channels {
+    //                 _w.push(Tensor::randn(kernel_dim, Some(true)));
+    //                 _b.push(Tensor::randn((1, 1), Some(true)));
+
+    //             }
+    //             w.push(_w);
+    //             b.push(_b);
+    //         }
+
+    //         let ret = x.conv2d(&w, &b);
+    //         (w, b, ret)
+    //     }
+    // }
+}

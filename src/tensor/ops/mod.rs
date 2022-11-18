@@ -1,17 +1,20 @@
 pub mod unary_ops;
 pub mod binary_ops;
 pub mod reduce_ops;
+pub mod processing_ops;
 
 use ndarray::Array2;
 use unary_ops::*;
 use binary_ops::*;
 use reduce_ops::*;
+use processing_ops::*;
 
 #[derive(Debug)]
 pub enum OpType {
     BinaryOp(BinaryOpType),
     UnaryOp(UnaryOpType),
     ReduceOp(ReduceOpType),
+    ProcessingOp(ProcessingOpType),
     Noop,
 }
 
@@ -21,6 +24,7 @@ impl OpType {
            OpType::BinaryOp(a) => a.__backward(incoming_grad),
            OpType::UnaryOp(a) => a.__backward(incoming_grad),
            OpType::ReduceOp(a) => a.__backward(incoming_grad),
+           OpType::ProcessingOp(a) => a.__backward(incoming_grad),
            OpType::Noop => {}
         };
     }
