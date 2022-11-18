@@ -2,7 +2,7 @@ pub mod ops;
 pub mod tensor_ref;
 
 use self::ops::binary_ops::{BinaryOpType, BinaryOps, Matmul, Mul, Sub};
-use self::ops::processing_ops::ProcessingOpType;
+use self::ops::processing_ops::{ProcessingOpType, ProcessingOps, Conv2d};
 use self::ops::reduce_ops::{Mean, ReduceOpType, ReduceOps, Sum};
 use self::ops::unary_ops::{NaturalLog, ReLU, Sigmoid, Square, UnaryOpType, UnaryOps};
 use self::ops::OpType;
@@ -357,6 +357,23 @@ impl BinaryOps for Rc<Tensor> {
         let at = Tensor::new(a, requires_grad);
         let op = Mul::from(self, &at);
         let output = op.forward(requires_grad.unwrap_or(false));
+        output
+    }
+}
+
+impl ProcessingOps for Rc<Tensor> {
+    type Value = Rc<Tensor>;
+
+    fn conv2d(&self, x: &Self::Value, strides: (usize, usize)) -> Rc<Tensor> {
+        let has_none = self.requires_grad.get().is_none() || x.requires_grad.get().is_none();
+        let requires_grad = (has_none
+            && (self.requires_grad.get().unwrap_or(false)
+                || x.requires_grad.get().unwrap_or(false)))
+            || (!has_none
+                && (self.requires_grad.get().unwrap_or(false)
+                    && x.requires_grad.get().unwrap_or(false)));
+        let op = Conv2d::from(self, x, strides);
+        let output = op.forward(requires_grad);
         output
     }
 }

@@ -22,6 +22,11 @@ impl ProcessingOpType {
     }
 }
 
+pub trait ProcessingOps {
+    type Value;
+    fn conv2d(&self, x: &Self::Value, strides: (usize, usize)) -> Rc<Tensor>;
+}
+
 #[derive(Debug)]
 pub struct Conv2d {
     lhs: Rc<Tensor>,
