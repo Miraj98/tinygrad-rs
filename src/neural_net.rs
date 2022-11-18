@@ -163,7 +163,7 @@ impl<T: Dataloader> Model<T> {
         }
 
         // Find loss and call backward on it
-        let loss = nn::cross_entropy(&a, &yt);
+        let loss = nn::loss::CrossEntropy(&a, &yt);
         loss.backward();
         loss
     }
