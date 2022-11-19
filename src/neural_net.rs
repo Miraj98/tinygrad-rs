@@ -1,6 +1,6 @@
 use crate::{
     datasets::Dataloader,
-    nn,
+    nn::Loss,
     tensor::{
         ops::{binary_ops::BinaryOps, unary_ops::UnaryOps},
         Tensor,
@@ -12,21 +12,21 @@ use plotters::prelude::*;
 use std::{iter::zip, rc::Rc};
 
 #[derive(Debug)]
-pub struct Model<T: Dataloader> {
+pub struct Model<T: Dataloader, L: Loss> {
     pub w: Vec<Rc<Tensor>>, // weights
     pub b: Vec<Rc<Tensor>>, // biases
+    loss: L,
     _loss_chart: Vec<(f64, f64)>,
     _lr_chart: Vec<(f64, f64)>,
-    // pub z: Vec<Tensor>, // sum(w.x + b)
-    // pub a: Vec<Tensor>, // sigmoid(z)
     dataloader: T,
 }
 
-impl<T: Dataloader> Model<T> {
-    pub fn init(isize: usize, osize: usize, hidden_layers: Vec<usize>, dataloader: T) -> Model<T> {
+impl<T: Dataloader, L: Loss> Model<T, L> {
+    pub fn new(isize: usize, osize: usize, hidden_layers: Vec<usize>, dataloader: T, loss: L) -> Model<T, L> {
         let mut m = Model {
             w: Vec::<Rc<Tensor>>::new(),
             b: Vec::<Rc<Tensor>>::new(),
+            loss,
             _loss_chart: Vec::<(f64, f64)>::new(),
             _lr_chart: Vec::<(f64, f64)>::new(),
             dataloader,
@@ -102,7 +102,7 @@ impl<T: Dataloader> Model<T> {
                 (total_correct_pred as f64) * 100. / 60_000.
             );
         }
-        Model::<T>::_draw_chart(plot_data);
+        Model::<T, L>::_draw_chart(plot_data);
     }
 
     pub fn train_mini_batch(&mut self, batch_size: usize, batch_idx: usize, lr: f64) {
@@ -163,7 +163,7 @@ impl<T: Dataloader> Model<T> {
         }
 
         // Find loss and call backward on it
-        let loss = nn::loss::CrossEntropy(&a, &yt);
+        let loss = self.loss.calculate(&a, &yt);
         loss.backward();
         loss
     }
