@@ -2,7 +2,7 @@ pub mod ops;
 pub mod tensor_ref;
 
 use self::ops::binary_ops::{BinaryOpType, BinaryOps, Matmul, Mul, Sub};
-use self::ops::processing_ops::{ProcessingOpType, ProcessingOps, Conv2d};
+use self::ops::processing_ops::{Conv2d, ProcessingOpType, ProcessingOps};
 use self::ops::reduce_ops::{Mean, ReduceOpType, ReduceOps, Sum};
 use self::ops::unary_ops::{NaturalLog, ReLU, Sigmoid, Square, UnaryOpType, UnaryOps};
 use self::ops::OpType;
@@ -523,6 +523,46 @@ mod binary_ops_tests {
             b.grad().as_ref().unwrap(),
             array![[5., 5.], [7., 7.], [9., 9.]]
         );
+    }
+}
+
+#[cfg(test)]
+mod process_ops_tests {
+    use crate::tensor::{ops::processing_ops::ProcessingOps, Tensor};
+    use ndarray::{array, Array2};
+
+    #[test]
+    fn conv2d_tensors() {
+        let a = Tensor::new(array![[1., 2., 3.], [3., 4., 5.], [5., 6., 7.]], None);
+        let b = Tensor::new(array![[0.1409, 0.2612], [0.2657, -0.1486]], None);
+        let out = a.conv2d(&b, (1, 1));
+        assert_eq!(
+            &out.ndarray() as &Array2<f64>,
+            array![
+                [0.8659999999999999, 1.3851999999999995],
+                [1.9043999999999999, 2.4236]
+            ]
+        );
+    }
+
+    #[test]
+    fn conv2d_grad_test() {
+        let a = Tensor::new(array![[1., 2., 3.], [3., 4., 5.], [5., 6., 7.]], Some(true));
+        let b = Tensor::new(array![[0.4078, 0.1711], [-0.3865, 0.3107]], Some(true));
+        let out = a.conv2d(&b, (1, 1));
+
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out.__backward(&out_grad_array);
+
+        assert_eq!(
+            a.grad().as_ref().unwrap(),
+            array![
+                [0.4078, 0.5789, 0.1711],
+                [0.021299999999999986, 0.5031, 0.4818],
+                [-0.3865, -0.07580000000000003, 0.3107]
+            ]
+        );
+        assert_eq!(b.grad().as_ref().unwrap(), array![[10., 14.], [18., 22.]]);
     }
 }
 
