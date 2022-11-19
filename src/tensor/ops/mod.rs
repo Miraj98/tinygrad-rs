@@ -9,6 +9,27 @@ use binary_ops::*;
 use reduce_ops::*;
 use processing_ops::*;
 
+pub enum OperationType<T: OpFunction> {
+    // Binary ops
+    Add(T),
+    Sub(T),
+    Mul(T),
+    Matmul(T),
+
+    // Unary ops
+    Square(T),
+    Sigmoid(T),
+    ReLU(T),
+    NaturalLog(T),
+
+    // Reduce ops
+    Mean(T),
+    Sum(T),
+
+    // Processing ops
+    Conv2d(T)
+}
+
 #[derive(Debug)]
 pub enum OpType {
     BinaryOp(BinaryOpType),

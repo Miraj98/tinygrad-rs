@@ -7,9 +7,10 @@ use self::ops::reduce_ops::{Mean, ReduceOpType, ReduceOps, Sum};
 use self::ops::unary_ops::{NaturalLog, ReLU, Sigmoid, Square, UnaryOpType, UnaryOps};
 use self::ops::OpType;
 use self::tensor_ref::RefMut;
-use ndarray::{Array2, Dim, ShapeBuilder};
+use ndarray::{Array, Array2, Dim, Dimension, ShapeBuilder};
 use ndarray_rand::rand_distr::StandardNormal;
 use ndarray_rand::RandomExt;
+use ndarray_rand::rand_distr::num_traits::{Zero, One};
 use ops::binary_ops::Add;
 use ops::OpFunction;
 use std::collections::HashSet;
@@ -20,19 +21,44 @@ use std::{
 };
 use tensor_ref::{BorrowRef, BorrowRefMut, Ref};
 
-#[derive(Debug)]
-pub struct Tensor {
-    data: UnsafeCell<Array2<f64>>,
-    grad_value: UnsafeCell<Option<Array2<f64>>>,
+pub trait TensorBaseImpl {
+    type A: Clone;
+    type D: Dimension;
+
+    fn new(a: Array<Self::A, Self::D>, requires_grad: Option<bool>) -> Rc<Self>;
+    fn from(a: &Array<Self::A, Self::D>, requires_grad: Option<bool>) -> Rc<Self>;
+    fn update_grad(&self, grad: Option<Array<Self::A, Self::D>>);
+    fn try_grad(&self) -> Result<Ref<Option<Array<Self::A, Self::D>>>, isize>;
+    fn grad(&self) -> Ref<Option<Array<Self::A, Self::D>>>;
+    fn try_ndarray(&self) -> Result<Ref<Array<Self::A, Self::D>>, isize>;
+    fn ndarray(&self) -> Ref<Array<Self::A, Self::D>>;
+    fn try_ndarray_mut(&self) -> Result<RefMut<Array<Self::A, Self::D>>, isize>;
+    fn ndarray_mut(&self) -> RefMut<Array<Self::A, Self::D>>;
+    fn backward(&self) where Self::A: Clone + One;
+    fn _backward<T: Dimension>(&self, incoming_grad: &Array<Self::A, T>);
+    fn zero_grad(&self);
+}
+
+pub struct TensorBase<A, D>
+where
+    A: Clone,
+    D: Dimension,
+{
+    data: UnsafeCell<Array<A, D>>,
+    grad_value: UnsafeCell<Option<Array<A, D>>>,
     grad_borrow: Cell<isize>,
     data_borrow: Cell<isize>,
     ctx: OpType,
     pub requires_grad: Cell<Option<bool>>,
 }
 
-impl Tensor {
-    fn __new(a: Array2<f64>, op: OpType, requires_grad: Option<bool>) -> Rc<Tensor> {
-        Rc::new(Tensor {
+impl<A, D> TensorBase<A, D>
+where
+    A: Clone,
+    D: Dimension,
+{
+    fn construct(a: Array<A, D>, op: OpType, requires_grad: Option<bool>) -> Rc<TensorBase<A, D>> {
+        Rc::new(TensorBase {
             data: UnsafeCell::new(a),
             grad_value: UnsafeCell::new(None),
             grad_borrow: Cell::new(0),
@@ -41,68 +67,92 @@ impl Tensor {
             requires_grad: Cell::new(requires_grad),
         })
     }
+}
 
-    pub fn new(a: Array2<f64>, requires_grad: Option<bool>) -> Rc<Tensor> {
-        Tensor::__new(a, OpType::Noop, requires_grad)
-    }
 
-    pub fn from(a: &Array2<f64>, requires_grad: Option<bool>) -> Rc<Tensor> {
-        Tensor::__new(a.to_owned(), OpType::Noop, requires_grad)
-    }
-
-    pub fn randn<Sh>(shape: Sh, requires_grad: Option<bool>) -> Rc<Tensor>
+impl <A, D> TensorBase<A, D> where A: Clone, D: Dimension {
+    pub fn zeros<Sh>(shape: Sh, requires_grad: Option<bool>) -> Rc<Self>
     where
-        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
+        Sh: ShapeBuilder<Dim = D>,
+        A: Clone + Zero
     {
-        let a = Array2::<f64>::random(shape, StandardNormal);
-        Tensor::__new(a, OpType::Noop, requires_grad)
+        let a: Array<A, D> = Array::zeros(shape);
+        TensorBase::construct(a, OpType::Noop, requires_grad)
     }
 
-    pub fn zeros<Sh>(shape: Sh, requires_grad: Option<bool>) -> Rc<Tensor>
+    pub fn ones<Sh>(shape: Sh, requires_grad: Option<bool>) -> Rc<Self>
     where
-        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
+        Sh: ShapeBuilder<Dim = D>,
+        A: Clone + One
     {
-        let a = Array2::<f64>::zeros(shape);
-        Tensor::__new(a, OpType::Noop, requires_grad)
+        let a: Array<A, D> = Array::ones(shape);
+        TensorBase::construct(a, OpType::Noop, requires_grad)
     }
 
-    pub fn ones<Sh>(shape: Sh, requires_grad: Option<bool>) -> Rc<Tensor>
-    where
-        Sh: ShapeBuilder<Dim = Dim<[usize; 2]>>,
-    {
-        let a = Array2::<f64>::ones(shape);
-        Tensor::__new(a, OpType::Noop, requires_grad)
+    fn dim(&self) -> D::Pattern {
+        unsafe { (*self.data.get()).dim() }    
     }
 
-    pub fn try_grad(&self) -> Result<Ref<Option<Array2<f64>>>, isize> {
+    fn deepwalk(&self) -> Vec<*const Self> {
+        todo!()
+    }
+}
+
+impl<D> TensorBase<f32, D> where D: Dimension {
+    pub fn randn<Sh>(shape: Sh, requires_grad: Option<bool>) -> Rc<Self> where Sh: ShapeBuilder<Dim = D> {
+        let a: Array<f32, D> = Array::random(shape, StandardNormal);
+        TensorBase::construct(a, OpType::Noop, requires_grad) 
+    }
+}
+
+impl<D> TensorBase<f64, D> where D: Dimension {
+    pub fn randn<Sh>(shape: Sh, requires_grad: Option<bool>) -> Rc<Self> where Sh: ShapeBuilder<Dim = D> {
+        let a: Array<f64, D> = Array::random(shape, StandardNormal);
+        TensorBase::construct(a, OpType::Noop, requires_grad) 
+    }
+}
+
+impl<A, D> TensorBaseImpl for TensorBase<A, D>
+where
+    A: Clone,
+    D: Dimension,
+{
+    type A = A;
+    type D = D;
+
+    fn new(a: Array<A, D>, requires_grad: Option<bool>) -> Rc<Self> {
+        TensorBase::construct(a, OpType::Noop, requires_grad)
+    }
+
+    fn from(a: &Array<A, D>, requires_grad: Option<bool>) -> Rc<Self> {
+        TensorBase::construct(a.to_owned(), OpType::Noop, requires_grad)
+    }
+
+    fn try_grad(&self) -> Result<Ref<Option<Array<Self::A, Self::D>>>, isize> {
         match BorrowRef::new(&self.grad_borrow) {
             Some(b) => {
                 let value = unsafe { NonNull::new_unchecked(self.grad_value.get()) };
                 Ok(Ref { value, borrow: b })
             }
             None => Err(self.grad_borrow.get()),
-        }
+        } 
     }
 
-    pub fn grad(&self) -> Ref<'_, Option<Array2<f64>>> {
+    fn grad(&self) -> Ref<Option<Array<Self::A, Self::D>>> {
         self.try_grad().expect("already mutably borrowed")
     }
 
-    pub fn dim(&self) -> (usize, usize) {
-        unsafe { (*self.data.get()).dim() }
-    }
-
-    pub fn try_ndarray(&self) -> Result<Ref<Array2<f64>>, isize> {
+    fn try_ndarray(&self) -> Result<Ref<Array<Self::A, Self::D>>, isize> {
         match BorrowRef::new(&self.data_borrow) {
             Some(b) => {
                 let value = unsafe { NonNull::new_unchecked(self.data.get()) };
                 Ok(Ref { value, borrow: b })
             }
             None => Err(self.data_borrow.get()),
-        }
+        } 
     }
 
-    pub fn try_ndarray_mut(&self) -> Result<RefMut<Array2<f64>>, isize> {
+    fn try_ndarray_mut(&self) -> Result<RefMut<Array<Self::A, Self::D>>, isize> {
         match BorrowRefMut::new(&self.data_borrow) {
             Some(b) => {
                 let value = unsafe { NonNull::new_unchecked(self.data.get()) };
@@ -113,168 +163,36 @@ impl Tensor {
                 })
             }
             None => Err(self.data_borrow.get()),
-        }
+        } 
     }
 
-    pub fn ndarray(&self) -> Ref<'_, Array2<f64>> {
-        self.try_ndarray().expect("already mutably borrowed")
+    fn ndarray(&self) -> Ref<Array<Self::A, Self::D>> {
+        self.try_ndarray().expect("already mutably borrowed") 
     }
 
-    pub fn ndarray_mut(&self) -> RefMut<'_, Array2<f64>> {
-        self.try_ndarray_mut().expect("already mutably borrowed")
+    fn ndarray_mut(&self) -> RefMut<Array<Self::A, Self::D>> {
+      self.try_ndarray_mut().expect("already mutably borrowed")  
     }
 
-    pub fn update_grad(&self, grad: Option<Array2<f64>>) {
+    fn update_grad(&self, grad: Option<Array<Self::A, Self::D>>) {
         unsafe { *self.grad_value.get() = grad };
     }
 
-    fn __deepwalk(&self) -> Vec<*const Tensor> {
-        let mut visited = HashSet::<*const Tensor>::new();
-        let mut added = HashSet::<*const Tensor>::new();
-        let mut work_stack = Vec::<*const Tensor>::new();
-
-        let mut topo = Vec::<*const Tensor>::new();
-        work_stack.push(self as *const Tensor);
-
-        while work_stack.len() > 0 {
-            if let Some(t) = work_stack.pop() {
-                if visited.contains(&t) {
-                    if !added.contains(&t) {
-                        topo.push(t);
-                        added.insert(t);
-                    }
-                } else {
-                    visited.insert(t);
-                    unsafe {
-                        match &(*t).ctx {
-                            OpType::Noop => {
-                                if !added.contains(&t) {
-                                    topo.push(t);
-                                    added.insert(t);
-                                }
-                            }
-                            OpType::BinaryOp(BinaryOpType::Add(a)) => {
-                                work_stack.push(t);
-                                let (lhs_ptr, rhs_ptr) = a.get_raw_ptr();
-                                if !visited.contains(&lhs_ptr) {
-                                    work_stack.push(lhs_ptr);
-                                }
-
-                                if !visited.contains(&rhs_ptr) {
-                                    work_stack.push(rhs_ptr);
-                                }
-                            }
-                            OpType::BinaryOp(BinaryOpType::Sub(a)) => {
-                                work_stack.push(t);
-                                let (lhs_ptr, rhs_ptr) = a.get_raw_ptr();
-                                if !visited.contains(&lhs_ptr) {
-                                    work_stack.push(lhs_ptr);
-                                }
-
-                                if !visited.contains(&rhs_ptr) {
-                                    work_stack.push(rhs_ptr);
-                                }
-                            }
-                            OpType::BinaryOp(BinaryOpType::Mul(a)) => {
-                                work_stack.push(t);
-                                let (lhs_ptr, rhs_ptr) = a.get_raw_ptr();
-                                if !visited.contains(&lhs_ptr) {
-                                    work_stack.push(lhs_ptr);
-                                }
-
-                                if !visited.contains(&rhs_ptr) {
-                                    work_stack.push(rhs_ptr);
-                                }
-                            }
-                            OpType::BinaryOp(BinaryOpType::Matmul(a)) => {
-                                work_stack.push(t);
-                                let (lhs_ptr, rhs_ptr) = a.get_raw_ptr();
-                                if !visited.contains(&lhs_ptr) {
-                                    work_stack.push(lhs_ptr);
-                                }
-
-                                if !visited.contains(&rhs_ptr) {
-                                    work_stack.push(rhs_ptr);
-                                }
-                            }
-                            OpType::UnaryOp(UnaryOpType::Sigmoid(a)) => {
-                                work_stack.push(t);
-                                let lhs_ptr = a.get_raw_ptr();
-                                if !visited.contains(&lhs_ptr) {
-                                    work_stack.push(lhs_ptr);
-                                }
-                            }
-                            OpType::UnaryOp(UnaryOpType::Square(a)) => {
-                                work_stack.push(t);
-                                let lhs_ptr = a.get_raw_ptr();
-                                if !visited.contains(&lhs_ptr) {
-                                    work_stack.push(lhs_ptr);
-                                }
-                            }
-                            OpType::UnaryOp(UnaryOpType::ReLU(a)) => {
-                                work_stack.push(t);
-                                let lhs_ptr = a.get_raw_ptr();
-                                if !visited.contains(&lhs_ptr) {
-                                    work_stack.push(lhs_ptr);
-                                }
-                            }
-                            OpType::UnaryOp(UnaryOpType::NaturalLog(a)) => {
-                                work_stack.push(t);
-                                let lhs_ptr = a.get_raw_ptr();
-                                if !visited.contains(&lhs_ptr) {
-                                    work_stack.push(lhs_ptr);
-                                }
-                            }
-                            OpType::ReduceOp(ReduceOpType::Mean(a)) => {
-                                work_stack.push(t);
-                                let lhs_ptr = a.get_raw_ptr();
-                                if !visited.contains(&lhs_ptr) {
-                                    work_stack.push(lhs_ptr);
-                                }
-                            }
-                            OpType::ReduceOp(ReduceOpType::Sum(a)) => {
-                                work_stack.push(t);
-                                let lhs_ptr = a.get_raw_ptr();
-                                if !visited.contains(&lhs_ptr) {
-                                    work_stack.push(lhs_ptr);
-                                }
-                            }
-                            OpType::ProcessingOp(ProcessingOpType::Conv2d(a)) => {
-                                work_stack.push(t);
-                                let (lhs_ptr, rhs_ptr) = a.get_raw_ptr();
-                                if !visited.contains(&lhs_ptr) {
-                                    work_stack.push(lhs_ptr);
-                                }
-
-                                if !visited.contains(&rhs_ptr) {
-                                    work_stack.push(rhs_ptr);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        topo.reverse();
-        topo
+    fn _backward<T: Dimension>(&self, incoming_grad: &Array<A, T>) {
+        todo!()
     }
 
-    fn __backward(&self, incoming_grad: &Array2<f64>) {
-        self.ctx.__backward(incoming_grad);
-    }
-
-    pub fn backward(&self) {
-        let tensors = self.__deepwalk();
-        let self_grad = Array2::<f64>::ones(self.dim());
+    fn backward(&self) where A: Clone + One {
+        let tensors = self.deepwalk();
+        let self_grad: Array<A, D> = Array::ones(self.dim());
 
         for t in &tensors {
             unsafe {
                 let pg = (**t).grad();
                 if let Some(p_grad) = pg.as_ref() {
-                    (**t).__backward(p_grad);
+                    (**t)._backward(p_grad);
                 } else {
-                    (**t).__backward(&self_grad);
+                    (**t)._backward(&self_grad);
                 }
             }
         }
@@ -282,472 +200,338 @@ impl Tensor {
         self.update_grad(Some(self_grad));
     }
 
-    pub fn zero_grad(&self) {
-        let tensors = self.__deepwalk();
+    fn zero_grad(&self) {
+        let tensors = self.deepwalk();
         for t in &tensors {
             unsafe {
                 (**t).update_grad(None);
             }
         }
     }
-
-    pub fn update_requires_grad(&self, requires_grad: Option<bool>) {
-        self.requires_grad.set(requires_grad);
-    }
 }
 
-impl BinaryOps for Rc<Tensor> {
-    type Value = Rc<Tensor>;
-
-    fn add(&self, x: &Self::Value) -> Self::Value {
-        let has_none = self.requires_grad.get().is_none() || x.requires_grad.get().is_none();
-        let requires_grad = (has_none
-            && (self.requires_grad.get().unwrap_or(false)
-                || x.requires_grad.get().unwrap_or(false)))
-            || (!has_none
-                && (self.requires_grad.get().unwrap_or(false)
-                    && x.requires_grad.get().unwrap_or(false)));
-        let op = Add::from(self, x);
-        let output = op.forward(requires_grad);
-        output
-    }
-
-    fn sub(&self, x: &Self::Value) -> Self::Value {
-        let has_none = self.requires_grad.get().is_none() || x.requires_grad.get().is_none();
-        let requires_grad = (has_none
-            && (self.requires_grad.get().unwrap_or(false)
-                || x.requires_grad.get().unwrap_or(false)))
-            || (!has_none
-                && (self.requires_grad.get().unwrap_or(false)
-                    && x.requires_grad.get().unwrap_or(false)));
-        let op = Sub::from(self, x);
-        let output = op.forward(requires_grad);
-        output
-    }
-
-    fn mul(&self, x: &Self::Value) -> Self::Value {
-        let has_none = self.requires_grad.get().is_none() || x.requires_grad.get().is_none();
-        let requires_grad = (has_none
-            && (self.requires_grad.get().unwrap_or(false)
-                || x.requires_grad.get().unwrap_or(false)))
-            || (!has_none
-                && (self.requires_grad.get().unwrap_or(false)
-                    && x.requires_grad.get().unwrap_or(false)));
-        let op = Mul::from(self, x);
-        let output = op.forward(requires_grad);
-        output
-    }
-
-    fn matmul(&self, x: &Self::Value) -> Self::Value {
-        let has_none = self.requires_grad.get().is_none() || x.requires_grad.get().is_none();
-        let requires_grad = (has_none
-            && (self.requires_grad.get().unwrap_or(false)
-                || x.requires_grad.get().unwrap_or(false)))
-            || (!has_none
-                && (self.requires_grad.get().unwrap_or(false)
-                    && x.requires_grad.get().unwrap_or(false)));
-        let op = Matmul::from(self, x);
-        let output = op.forward(requires_grad);
-        output
-    }
-
-    fn mul_scalar(&self, x: f64) -> Self::Value {
-        let requires_grad = self.requires_grad.get();
-        let a = Array2::<f64>::ones(self.dim()) * x;
-        let at = Tensor::new(a, requires_grad);
-        let op = Mul::from(self, &at);
-        let output = op.forward(requires_grad.unwrap_or(false));
-        output
-    }
-}
-
-impl ProcessingOps for Rc<Tensor> {
-    type Value = Rc<Tensor>;
-
-    fn conv2d(&self, x: &Self::Value, strides: (usize, usize)) -> Rc<Tensor> {
-        let has_none = self.requires_grad.get().is_none() || x.requires_grad.get().is_none();
-        let requires_grad = (has_none
-            && (self.requires_grad.get().unwrap_or(false)
-                || x.requires_grad.get().unwrap_or(false)))
-            || (!has_none
-                && (self.requires_grad.get().unwrap_or(false)
-                    && x.requires_grad.get().unwrap_or(false)));
-        let op = Conv2d::from(self, x, strides);
-        let output = op.forward(requires_grad);
-        output
-    }
-}
-
-impl UnaryOps for Rc<Tensor> {
-    type Value = Rc<Tensor>;
-    fn sigmoid(&self) -> Self::Value {
-        let requires_grad = self.requires_grad.get().unwrap_or(false);
-        let op = Sigmoid::from(self);
-        let output = op.forward(requires_grad);
-        output
-    }
-
-    fn square(&self) -> Self::Value {
-        let requires_grad = self.requires_grad.get().unwrap_or(false);
-        let op = Square::from(self);
-        let output = op.forward(requires_grad);
-        output
-    }
-
-    fn relu(&self) -> Self::Value {
-        let requires_grad = self.requires_grad.get().unwrap_or(false);
-        let op = ReLU::from(self);
-        let output = op.forward(requires_grad);
-        output
-    }
-
-    fn ln(&self) -> Self::Value {
-        let requires_grad = self.requires_grad.get().unwrap_or(false);
-        let op = NaturalLog::from(self);
-        let output = op.forward(requires_grad);
-        output
-    }
-}
-
-impl ReduceOps for Rc<Tensor> {
-    type Value = Rc<Tensor>;
-
-    fn mean(&self) -> Self::Value {
-        let requires_grad = self.requires_grad.get().unwrap_or(false);
-        let op = Mean::from(self);
-        let output = op.forward(requires_grad);
-        output
-    }
-
-    fn sum(&self) -> Self::Value {
-        let requires_grad = self.requires_grad.get().unwrap_or(false);
-        let op = Sum::from(self);
-        let output = op.forward(requires_grad);
-        output
-    }
-}
-
-#[cfg(test)]
-mod binary_ops_tests {
-    use super::{ops::binary_ops::BinaryOps, Tensor};
-    use ndarray::{array, Array2};
-
-    #[test]
-    fn add_tensors() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
-        let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
-        let out = a.add(&b);
-        assert_eq!(&out.ndarray() as &Array2<f64>, array![[3., 5.], [7., 9.]]);
-    }
-
-    #[test]
-    fn add_tensors_grad_test() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
-        let b = Tensor::new(array![[2., 3.], [4., 5.]], Some(true));
-        let out = a.add(&b);
-
-        let out_grad_array = array![[1., 1.], [1., 1.]];
-        out.__backward(&out_grad_array);
-
-        assert_eq!(a.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
-        assert_eq!(b.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
-    }
-
-    #[test]
-    fn sub_tensors() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
-        let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
-        let out = b.sub(&a);
-        assert_eq!(&out.ndarray() as &Array2<f64>, array![[1., 1.], [1., 1.]]);
-    }
-
-    #[test]
-    fn sub_tensors_grad_test() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
-        let b = Tensor::new(array![[2., 3.], [4., 5.]], Some(true));
-        let out = b.sub(&a);
-
-        let out_grad_array = array![[1., 1.], [1., 1.]];
-        out.__backward(&out_grad_array);
-
-        assert_eq!(a.grad().as_ref().unwrap(), array![[-1., -1.], [-1., -1.]]);
-        assert_eq!(b.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
-    }
-
-    #[test]
-    fn mul_tensors() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
-        let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
-        let out = a.mul(&b);
-        assert_eq!(&out.ndarray() as &Array2<f64>, array![[2., 6.], [12., 20.]]);
-    }
-
-    #[test]
-    fn mul_tensors_grad_test() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
-        let b = Tensor::new(array![[2., 3.], [4., 5.]], Some(true));
-        let out = a.mul(&b);
-
-        let out_grad_array = array![[1., 1.], [1., 1.]];
-        out.__backward(&out_grad_array);
-
-        assert_eq!(a.grad().as_ref().unwrap(), array![[2., 3.], [4., 5.]]);
-        assert_eq!(b.grad().as_ref().unwrap(), array![[1., 2.], [3., 4.]]);
-    }
-
-    #[test]
-    fn matmul_tensors() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
-        let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
-        let out = a.matmul(&b);
-        assert_eq!(
-            &out.ndarray() as &Array2<f64>,
-            array![[10., 13.], [22., 29.]]
-        );
-    }
-
-    #[test]
-    fn matmul_tensors_grad_test() {
-        let a = Tensor::new(array![[1., 2., 3.], [4., 5., 6.]], Some(true));
-        let b = Tensor::new(array![[2., 3.], [4., 5.], [6., 7.]], Some(true));
-        let out = a.matmul(&b);
-
-        let out_grad_array = array![[1., 1.], [1., 1.]];
-        out.__backward(&out_grad_array);
-
-        assert_eq!(
-            a.grad().as_ref().unwrap(),
-            array![[5., 9., 13.], [5., 9., 13.]]
-        );
-        assert_eq!(
-            b.grad().as_ref().unwrap(),
-            array![[5., 5.], [7., 7.], [9., 9.]]
-        );
-    }
-}
-
-#[cfg(test)]
-mod process_ops_tests {
-    use crate::tensor::{ops::processing_ops::ProcessingOps, Tensor};
-    use ndarray::{array, Array2};
-
-    #[test]
-    fn conv2d_tensors() {
-        let a = Tensor::new(array![[1., 2., 3.], [3., 4., 5.], [5., 6., 7.]], None);
-        let b = Tensor::new(array![[0.1409, 0.2612], [0.2657, -0.1486]], None);
-        let out = a.conv2d(&b, (1, 1));
-        assert_eq!(
-            &out.ndarray() as &Array2<f64>,
-            array![
-                [0.8659999999999999, 1.3851999999999995],
-                [1.9043999999999999, 2.4236]
-            ]
-        );
-    }
-
-    #[test]
-    fn conv2d_grad_test() {
-        let a = Tensor::new(array![[1., 2., 3.], [3., 4., 5.], [5., 6., 7.]], Some(true));
-        let b = Tensor::new(array![[0.4078, 0.1711], [-0.3865, 0.3107]], Some(true));
-        let out = a.conv2d(&b, (1, 1));
-
-        let out_grad_array = array![[1., 1.], [1., 1.]];
-        out.__backward(&out_grad_array);
-
-        assert_eq!(
-            a.grad().as_ref().unwrap(),
-            array![
-                [0.4078, 0.5789, 0.1711],
-                [0.021299999999999986, 0.5031, 0.4818],
-                [-0.3865, -0.07580000000000003, 0.3107]
-            ]
-        );
-        assert_eq!(b.grad().as_ref().unwrap(), array![[10., 14.], [18., 22.]]);
-    }
-}
-
-#[cfg(test)]
-mod unary_ops_tests {
-    use crate::tensor::{ops::unary_ops::UnaryOps, Tensor};
-    use ndarray::{array, Array2};
-
-    #[test]
-    fn sigmoid_test() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
-        let out = a.sigmoid();
-        assert_eq!(
-            &out.ndarray() as &Array2<f64>,
-            array![
-                [0.7310585786300049, 0.8807970779778823],
-                [0.9525741268224334, 0.9820137900379085]
-            ]
-        );
-    }
-
-    #[test]
-    fn sigmoid_grad_test() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
-        let out = a.sigmoid();
-
-        let out_grad_array = array![[1., 1.], [1., 1.]];
-        out.__backward(&out_grad_array);
-
-        assert_eq!(
-            a.grad().as_ref().unwrap(),
-            array![
-                [0.19661193324148188, 0.1049935854035065],
-                [0.045176659730912144, 0.017662706213291114]
-            ]
-        );
-    }
-
-    #[test]
-    fn square_test() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
-        let out = a.square();
-        assert_eq!(&out.ndarray() as &Array2<f64>, array![[1., 4.], [9., 16.]]);
-    }
-
-    #[test]
-    fn square_grad_test() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
-        let out = a.square();
-
-        let out_grad_array = array![[1., 1.], [1., 1.]];
-        out.__backward(&out_grad_array);
-
-        assert_eq!(a.grad().as_ref().unwrap(), array![[2., 4.], [6., 8.]]);
-    }
-
-    #[test]
-    fn relu_test() {
-        let a = Tensor::new(array![[-1., 0.], [3., 4.]], None);
-        let out = a.relu();
-        assert_eq!(&out.ndarray() as &Array2<f64>, array![[0., 0.], [3., 4.]]);
-    }
-
-    #[test]
-    fn relu_grad_test() {
-        let a = Tensor::new(array![[-1., -8.], [3., 4.]], Some(true));
-        let out = a.relu();
-
-        let out_grad_array = array![[1., 1.], [1., 1.]];
-        out.__backward(&out_grad_array);
-
-        assert_eq!(a.grad().as_ref().unwrap(), array![[0., 0.], [1., 1.]]);
-    }
-
-    #[test]
-    fn natural_log_test() {
-        let a = Tensor::new(array![[1., 10.], [3., 4.]], None);
-        let out = a.ln();
-        assert_eq!(
-            &out.ndarray() as &Array2<f64>,
-            array![
-                [0., 2.302585092994046],
-                [1.0986122886681098, 1.3862943611198906]
-            ]
-        );
-    }
-
-    #[test]
-    fn natural_log_grad_test() {
-        let a = Tensor::new(array![[1., 10.], [3., 4.]], Some(true));
-        let out = a.ln();
-
-        let out_grad_array = array![[1., 1.], [1., 1.]];
-        out.__backward(&out_grad_array);
-
-        assert_eq!(
-            a.grad().as_ref().unwrap(),
-            array![[1., 0.1], [0.3333333333333333, 0.25]]
-        );
-    }
-}
-
-#[cfg(test)]
-mod reduce_ops_tests {
-    use crate::tensor::{ops::reduce_ops::ReduceOps, Tensor};
-    use ndarray::{array, Array2};
-
-    #[test]
-    fn mean_test() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
-        let out = a.mean();
-        assert_eq!(&out.ndarray() as &Array2<f64>, array![[2.5]]);
-    }
-
-    #[test]
-    fn mean_grad_test() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
-        let out = a.mean();
-
-        let out_grad_array = array![[1.]];
-        out.__backward(&out_grad_array);
-
-        assert_eq!(
-            a.grad().as_ref().unwrap(),
-            array![[0.25, 0.25], [0.25, 0.25]]
-        );
-    }
-
-    #[test]
-    fn sum_test() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
-        let out = a.sum();
-        assert_eq!(&out.ndarray() as &Array2<f64>, array![[10.]]);
-    }
-
-    #[test]
-    fn sum_grad_test() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
-        let out = a.sum();
-
-        let out_grad_array = array![[1.]];
-        out.__backward(&out_grad_array);
-
-        assert_eq!(a.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
-    }
-}
-
-#[cfg(test)]
-mod autodiff_tests {
-    use ndarray::array;
-
-    use crate::tensor::ops::{reduce_ops::ReduceOps, unary_ops::UnaryOps};
-
-    use super::{ops::binary_ops::BinaryOps, Tensor};
-
-    #[test]
-    fn topo_order() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
-        let b = Tensor::new(array![[5., 6.], [7., 8.]], Some(true));
-        let c = a.add(&b);
-        let d = c.mul(&a);
-
-        let order = d.__deepwalk();
-
-        assert_eq!(order.len(), 4);
-        assert_eq!(order[0], d.as_ref() as *const Tensor);
-        assert_eq!(order[1], c.as_ref() as *const Tensor);
-        assert_eq!(order[2], b.as_ref() as *const Tensor);
-        assert_eq!(order[3], a.as_ref() as *const Tensor);
-    }
-
-    #[test]
-    fn chain_rule_test() {
-        let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
-        let b = Tensor::new(array![[5., 6.], [7., 8.]], Some(true));
-        let c = a.add(&b);
-        let d = c.mul(&a);
-        let e = d.square().sum();
-
-        e.backward();
-
-        assert_eq!(
-            a.grad().as_ref().unwrap(),
-            array![[84., 320.], [780., 1536.]]
-        );
-        assert_eq!(b.grad().as_ref().unwrap(), array![[12., 64.], [180., 384.]]);
-    }
-}
+
+// #[cfg(test)]
+// mod binary_ops_tests {
+//     use super::{ops::binary_ops::BinaryOps, Tensor};
+//     use ndarray::{array, Array2};
+
+//     #[test]
+//     fn add_tensors() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+//         let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
+//         let out = a.add(&b);
+//         assert_eq!(&out.ndarray() as &Array2<f64>, array![[3., 5.], [7., 9.]]);
+//     }
+
+//     #[test]
+//     fn add_tensors_grad_test() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+//         let b = Tensor::new(array![[2., 3.], [4., 5.]], Some(true));
+//         let out = a.add(&b);
+
+//         let out_grad_array = array![[1., 1.], [1., 1.]];
+//         out.__backward(&out_grad_array);
+
+//         assert_eq!(a.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
+//         assert_eq!(b.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
+//     }
+
+//     #[test]
+//     fn sub_tensors() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+//         let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
+//         let out = b.sub(&a);
+//         assert_eq!(&out.ndarray() as &Array2<f64>, array![[1., 1.], [1., 1.]]);
+//     }
+
+//     #[test]
+//     fn sub_tensors_grad_test() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+//         let b = Tensor::new(array![[2., 3.], [4., 5.]], Some(true));
+//         let out = b.sub(&a);
+
+//         let out_grad_array = array![[1., 1.], [1., 1.]];
+//         out.__backward(&out_grad_array);
+
+//         assert_eq!(a.grad().as_ref().unwrap(), array![[-1., -1.], [-1., -1.]]);
+//         assert_eq!(b.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
+//     }
+
+//     #[test]
+//     fn mul_tensors() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+//         let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
+//         let out = a.mul(&b);
+//         assert_eq!(&out.ndarray() as &Array2<f64>, array![[2., 6.], [12., 20.]]);
+//     }
+
+//     #[test]
+//     fn mul_tensors_grad_test() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+//         let b = Tensor::new(array![[2., 3.], [4., 5.]], Some(true));
+//         let out = a.mul(&b);
+
+//         let out_grad_array = array![[1., 1.], [1., 1.]];
+//         out.__backward(&out_grad_array);
+
+//         assert_eq!(a.grad().as_ref().unwrap(), array![[2., 3.], [4., 5.]]);
+//         assert_eq!(b.grad().as_ref().unwrap(), array![[1., 2.], [3., 4.]]);
+//     }
+
+//     #[test]
+//     fn matmul_tensors() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+//         let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
+//         let out = a.matmul(&b);
+//         assert_eq!(
+//             &out.ndarray() as &Array2<f64>,
+//             array![[10., 13.], [22., 29.]]
+//         );
+//     }
+
+//     #[test]
+//     fn matmul_tensors_grad_test() {
+//         let a = Tensor::new(array![[1., 2., 3.], [4., 5., 6.]], Some(true));
+//         let b = Tensor::new(array![[2., 3.], [4., 5.], [6., 7.]], Some(true));
+//         let out = a.matmul(&b);
+
+//         let out_grad_array = array![[1., 1.], [1., 1.]];
+//         out.__backward(&out_grad_array);
+
+//         assert_eq!(
+//             a.grad().as_ref().unwrap(),
+//             array![[5., 9., 13.], [5., 9., 13.]]
+//         );
+//         assert_eq!(
+//             b.grad().as_ref().unwrap(),
+//             array![[5., 5.], [7., 7.], [9., 9.]]
+//         );
+//     }
+// }
+
+// #[cfg(test)]
+// mod process_ops_tests {
+//     use crate::tensor::{ops::processing_ops::ProcessingOps, Tensor};
+//     use ndarray::{array, Array2};
+
+//     #[test]
+//     fn conv2d_tensors() {
+//         let a = Tensor::new(array![[1., 2., 3.], [3., 4., 5.], [5., 6., 7.]], None);
+//         let b = Tensor::new(array![[0.1409, 0.2612], [0.2657, -0.1486]], None);
+//         let out = a.conv2d(&b, (1, 1));
+//         assert_eq!(
+//             &out.ndarray() as &Array2<f64>,
+//             array![
+//                 [0.8659999999999999, 1.3851999999999995],
+//                 [1.9043999999999999, 2.4236]
+//             ]
+//         );
+//     }
+
+//     #[test]
+//     fn conv2d_grad_test() {
+//         let a = Tensor::new(array![[1., 2., 3.], [3., 4., 5.], [5., 6., 7.]], Some(true));
+//         let b = Tensor::new(array![[0.4078, 0.1711], [-0.3865, 0.3107]], Some(true));
+//         let out = a.conv2d(&b, (1, 1));
+
+//         let out_grad_array = array![[1., 1.], [1., 1.]];
+//         out.__backward(&out_grad_array);
+
+//         assert_eq!(
+//             a.grad().as_ref().unwrap(),
+//             array![
+//                 [0.4078, 0.5789, 0.1711],
+//                 [0.021299999999999986, 0.5031, 0.4818],
+//                 [-0.3865, -0.07580000000000003, 0.3107]
+//             ]
+//         );
+//         assert_eq!(b.grad().as_ref().unwrap(), array![[10., 14.], [18., 22.]]);
+//     }
+// }
+
+// #[cfg(test)]
+// mod unary_ops_tests {
+//     use crate::tensor::{ops::unary_ops::UnaryOps, Tensor};
+//     use ndarray::{array, Array2};
+
+//     #[test]
+//     fn sigmoid_test() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+//         let out = a.sigmoid();
+//         assert_eq!(
+//             &out.ndarray() as &Array2<f64>,
+//             array![
+//                 [0.7310585786300049, 0.8807970779778823],
+//                 [0.9525741268224334, 0.9820137900379085]
+//             ]
+//         );
+//     }
+
+//     #[test]
+//     fn sigmoid_grad_test() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+//         let out = a.sigmoid();
+
+//         let out_grad_array = array![[1., 1.], [1., 1.]];
+//         out.__backward(&out_grad_array);
+
+//         assert_eq!(
+//             a.grad().as_ref().unwrap(),
+//             array![
+//                 [0.19661193324148188, 0.1049935854035065],
+//                 [0.045176659730912144, 0.017662706213291114]
+//             ]
+//         );
+//     }
+
+//     #[test]
+//     fn square_test() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+//         let out = a.square();
+//         assert_eq!(&out.ndarray() as &Array2<f64>, array![[1., 4.], [9., 16.]]);
+//     }
+
+//     #[test]
+//     fn square_grad_test() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+//         let out = a.square();
+
+//         let out_grad_array = array![[1., 1.], [1., 1.]];
+//         out.__backward(&out_grad_array);
+
+//         assert_eq!(a.grad().as_ref().unwrap(), array![[2., 4.], [6., 8.]]);
+//     }
+
+//     #[test]
+//     fn relu_test() {
+//         let a = Tensor::new(array![[-1., 0.], [3., 4.]], None);
+//         let out = a.relu();
+//         assert_eq!(&out.ndarray() as &Array2<f64>, array![[0., 0.], [3., 4.]]);
+//     }
+
+//     #[test]
+//     fn relu_grad_test() {
+//         let a = Tensor::new(array![[-1., -8.], [3., 4.]], Some(true));
+//         let out = a.relu();
+
+//         let out_grad_array = array![[1., 1.], [1., 1.]];
+//         out.__backward(&out_grad_array);
+
+//         assert_eq!(a.grad().as_ref().unwrap(), array![[0., 0.], [1., 1.]]);
+//     }
+
+//     #[test]
+//     fn natural_log_test() {
+//         let a = Tensor::new(array![[1., 10.], [3., 4.]], None);
+//         let out = a.ln();
+//         assert_eq!(
+//             &out.ndarray() as &Array2<f64>,
+//             array![
+//                 [0., 2.302585092994046],
+//                 [1.0986122886681098, 1.3862943611198906]
+//             ]
+//         );
+//     }
+
+//     #[test]
+//     fn natural_log_grad_test() {
+//         let a = Tensor::new(array![[1., 10.], [3., 4.]], Some(true));
+//         let out = a.ln();
+
+//         let out_grad_array = array![[1., 1.], [1., 1.]];
+//         out.__backward(&out_grad_array);
+
+//         assert_eq!(
+//             a.grad().as_ref().unwrap(),
+//             array![[1., 0.1], [0.3333333333333333, 0.25]]
+//         );
+//     }
+// }
+
+// #[cfg(test)]
+// mod reduce_ops_tests {
+//     use crate::tensor::{ops::reduce_ops::ReduceOps, Tensor};
+//     use ndarray::{array, Array2};
+
+//     #[test]
+//     fn mean_test() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+//         let out = a.mean();
+//         assert_eq!(&out.ndarray() as &Array2<f64>, array![[2.5]]);
+//     }
+
+//     #[test]
+//     fn mean_grad_test() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+//         let out = a.mean();
+
+//         let out_grad_array = array![[1.]];
+//         out.__backward(&out_grad_array);
+
+//         assert_eq!(
+//             a.grad().as_ref().unwrap(),
+//             array![[0.25, 0.25], [0.25, 0.25]]
+//         );
+//     }
+
+//     #[test]
+//     fn sum_test() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
+//         let out = a.sum();
+//         assert_eq!(&out.ndarray() as &Array2<f64>, array![[10.]]);
+//     }
+
+//     #[test]
+//     fn sum_grad_test() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+//         let out = a.sum();
+
+//         let out_grad_array = array![[1.]];
+//         out.__backward(&out_grad_array);
+
+//         assert_eq!(a.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
+//     }
+// }
+
+// #[cfg(test)]
+// mod autodiff_tests {
+//     use ndarray::array;
+
+//     use crate::tensor::ops::{reduce_ops::ReduceOps, unary_ops::UnaryOps};
+
+//     use super::{ops::binary_ops::BinaryOps, Tensor};
+
+//     #[test]
+//     fn topo_order() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+//         let b = Tensor::new(array![[5., 6.], [7., 8.]], Some(true));
+//         let c = a.add(&b);
+//         let d = c.mul(&a);
+
+//         let order = d.__deepwalk();
+
+//         assert_eq!(order.len(), 4);
+//         assert_eq!(order[0], d.as_ref() as *const Tensor);
+//         assert_eq!(order[1], c.as_ref() as *const Tensor);
+//         assert_eq!(order[2], b.as_ref() as *const Tensor);
+//         assert_eq!(order[3], a.as_ref() as *const Tensor);
+//     }
+
+//     #[test]
+//     fn chain_rule_test() {
+//         let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
+//         let b = Tensor::new(array![[5., 6.], [7., 8.]], Some(true));
+//         let c = a.add(&b);
+//         let d = c.mul(&a);
+//         let e = d.square().sum();
+
+//         e.backward();
+
+//         assert_eq!(
+//             a.grad().as_ref().unwrap(),
+//             array![[84., 320.], [780., 1536.]]
+//         );
+//         assert_eq!(b.grad().as_ref().unwrap(), array![[12., 64.], [180., 384.]]);
+//     }
+// }
