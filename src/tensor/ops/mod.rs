@@ -20,23 +20,23 @@ pub mod binary_ops;
 
 // use ndarray::Array2;
 // use unary_ops::*;
-use binary_ops::*;
-// use reduce_ops::*;
-// use processing_ops::*;
+// use binary_ops::*;
+// // use reduce_ops::*;
+// // use processing_ops::*;
 
-#[derive(Debug)]
-pub enum OpType<A, D1, D2>
-where
-    A: Clone,
-    D1: Dimension + DimMax<D2>,
-    D2: Dimension,
-{
-    BinaryOp(BinaryOpType<A, D1, D2>),
-    // UnaryOp(UnaryOpType),
-    // ReduceOp(ReduceOpType),
-    // ProcessingOp(ProcessingOpType),
-    Noop,
-}
+// #[derive(Debug)]
+// pub enum OpType<A, D1, D2>
+// where
+//     A: Clone,
+//     D1: Dimension + DimMax<D2>,
+//     D2: Dimension,
+// {
+//     BinaryOp(BinaryOpType<A, D1, D2>),
+//     // UnaryOp(UnaryOpType),
+//     // ReduceOp(ReduceOpType),
+//     // ProcessingOp(ProcessingOpType),
+//     Noop,
+// }
 
 // impl OpType {
 //     pub fn __backward(&self, incoming_grad: &Array2<f64>) {
@@ -50,9 +50,9 @@ where
 //     }
 // }
 
-pub trait OpFunction {
-    type Output;
+// pub trait OpFunction {
+//     type Output;
 
-    fn forward(&self, requires_grad: bool) -> Self::Output;
-    fn backward(&self, incoming_grad: &Self::Output);
-}
+//     fn forward(&self, requires_grad: bool) -> Self::Output;
+//     fn backward(&self, incoming_grad: &Self::Output);
+// }
