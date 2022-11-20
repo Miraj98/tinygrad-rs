@@ -1,18 +1,19 @@
 pub mod ops;
 pub mod tensor_ref;
 
-use self::ops::binary_ops::{BinaryOpType, BinaryOps, Matmul, Mul, Sub};
-use self::ops::processing_ops::{Conv2d, ProcessingOpType, ProcessingOps};
-use self::ops::reduce_ops::{Mean, ReduceOpType, ReduceOps, Sum};
-use self::ops::unary_ops::{NaturalLog, ReLU, Sigmoid, Square, UnaryOpType, UnaryOps};
+// use self::ops::binary_ops::{BinaryOpType, BinaryOps, Matmul, Mul, Sub};
+// use self::ops::processing_ops::{Conv2d, ProcessingOpType, ProcessingOps};
+// use self::ops::reduce_ops::{Mean, ReduceOpType, ReduceOps, Sum};
+// use self::ops::unary_ops::{NaturalLog, ReLU, Sigmoid, Square, UnaryOpType, UnaryOps};
 use self::ops::OpType;
 use self::tensor_ref::RefMut;
-use ndarray::{Array, Array2, Dim, Dimension, ShapeBuilder};
+use ndarray::{Array, Array2, Dim, Dimension, ShapeBuilder, DimMax};
+use ndarray_rand::rand_distr::num_traits::{One, Zero};
 use ndarray_rand::rand_distr::StandardNormal;
 use ndarray_rand::RandomExt;
-use ndarray_rand::rand_distr::num_traits::{Zero, One};
-use ops::binary_ops::Add;
-use ops::OpFunction;
+use std::cell::RefCell;
+// use ops::binary_ops::Add;
+// use ops::OpFunction;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::{
@@ -34,7 +35,9 @@ pub trait TensorBaseImpl {
     fn ndarray(&self) -> Ref<Array<Self::A, Self::D>>;
     fn try_ndarray_mut(&self) -> Result<RefMut<Array<Self::A, Self::D>>, isize>;
     fn ndarray_mut(&self) -> RefMut<Array<Self::A, Self::D>>;
-    fn backward(&self) where Self::A: Clone + One;
+    fn backward(&self)
+    where
+        Self::A: Clone + One;
     fn _backward<T: Dimension>(&self, incoming_grad: &Array<Self::A, T>);
     fn zero_grad(&self);
 }
@@ -48,7 +51,7 @@ where
     grad_value: UnsafeCell<Option<Array<A, D>>>,
     grad_borrow: Cell<isize>,
     data_borrow: Cell<isize>,
-    ctx: OpType,
+    backward: RefCell<Option<Box<dyn Fn(Rc<TensorBase<A, D>>)>>>,
     pub requires_grad: Cell<Option<bool>>,
 }
 
@@ -57,40 +60,46 @@ where
     A: Clone,
     D: Dimension,
 {
-    fn construct(a: Array<A, D>, op: OpType, requires_grad: Option<bool>) -> Rc<TensorBase<A, D>> {
+    fn construct(
+        a: Array<A, D>,
+        requires_grad: Option<bool>,
+    ) -> Rc<TensorBase<A, D>> {
         Rc::new(TensorBase {
             data: UnsafeCell::new(a),
             grad_value: UnsafeCell::new(None),
             grad_borrow: Cell::new(0),
             data_borrow: Cell::new(0),
-            ctx: op,
+            backward: RefCell::new(None),
             requires_grad: Cell::new(requires_grad),
         })
     }
 }
 
-
-impl <A, D> TensorBase<A, D> where A: Clone, D: Dimension {
+impl<A, D> TensorBase<A, D>
+where
+    A: Clone,
+    D: Dimension,
+{
     pub fn zeros<Sh>(shape: Sh, requires_grad: Option<bool>) -> Rc<Self>
     where
         Sh: ShapeBuilder<Dim = D>,
-        A: Clone + Zero
+        A: Clone + Zero,
     {
         let a: Array<A, D> = Array::zeros(shape);
-        TensorBase::construct(a, OpType::Noop, requires_grad)
+        TensorBase::construct(a, requires_grad)
     }
 
     pub fn ones<Sh>(shape: Sh, requires_grad: Option<bool>) -> Rc<Self>
     where
         Sh: ShapeBuilder<Dim = D>,
-        A: Clone + One
+        A: Clone + One,
     {
         let a: Array<A, D> = Array::ones(shape);
-        TensorBase::construct(a, OpType::Noop, requires_grad)
+        TensorBase::construct(a, requires_grad)
     }
 
     fn dim(&self) -> D::Pattern {
-        unsafe { (*self.data.get()).dim() }    
+        unsafe { (*self.data.get()).dim() }
     }
 
     fn deepwalk(&self) -> Vec<*const Self> {
@@ -98,17 +107,29 @@ impl <A, D> TensorBase<A, D> where A: Clone, D: Dimension {
     }
 }
 
-impl<D> TensorBase<f32, D> where D: Dimension {
-    pub fn randn<Sh>(shape: Sh, requires_grad: Option<bool>) -> Rc<Self> where Sh: ShapeBuilder<Dim = D> {
+impl<D> TensorBase<f32, D>
+where
+    D: Dimension,
+{
+    pub fn randn<Sh>(shape: Sh, requires_grad: Option<bool>) -> Rc<Self>
+    where
+        Sh: ShapeBuilder<Dim = D>,
+    {
         let a: Array<f32, D> = Array::random(shape, StandardNormal);
-        TensorBase::construct(a, OpType::Noop, requires_grad) 
+        TensorBase::construct(a, requires_grad)
     }
 }
 
-impl<D> TensorBase<f64, D> where D: Dimension {
-    pub fn randn<Sh>(shape: Sh, requires_grad: Option<bool>) -> Rc<Self> where Sh: ShapeBuilder<Dim = D> {
+impl<D> TensorBase<f64, D>
+where
+    D: Dimension,
+{
+    pub fn randn<Sh>(shape: Sh, requires_grad: Option<bool>) -> Rc<Self>
+    where
+        Sh: ShapeBuilder<Dim = D>,
+    {
         let a: Array<f64, D> = Array::random(shape, StandardNormal);
-        TensorBase::construct(a, OpType::Noop, requires_grad) 
+        TensorBase::construct(a, requires_grad)
     }
 }
 
@@ -121,11 +142,11 @@ where
     type D = D;
 
     fn new(a: Array<A, D>, requires_grad: Option<bool>) -> Rc<Self> {
-        TensorBase::construct(a, OpType::Noop, requires_grad)
+        TensorBase::construct(a, requires_grad)
     }
 
     fn from(a: &Array<A, D>, requires_grad: Option<bool>) -> Rc<Self> {
-        TensorBase::construct(a.to_owned(), OpType::Noop, requires_grad)
+        TensorBase::construct(a.to_owned(), requires_grad)
     }
 
     fn try_grad(&self) -> Result<Ref<Option<Array<Self::A, Self::D>>>, isize> {
@@ -135,7 +156,7 @@ where
                 Ok(Ref { value, borrow: b })
             }
             None => Err(self.grad_borrow.get()),
-        } 
+        }
     }
 
     fn grad(&self) -> Ref<Option<Array<Self::A, Self::D>>> {
@@ -149,7 +170,7 @@ where
                 Ok(Ref { value, borrow: b })
             }
             None => Err(self.data_borrow.get()),
-        } 
+        }
     }
 
     fn try_ndarray_mut(&self) -> Result<RefMut<Array<Self::A, Self::D>>, isize> {
@@ -163,15 +184,15 @@ where
                 })
             }
             None => Err(self.data_borrow.get()),
-        } 
+        }
     }
 
     fn ndarray(&self) -> Ref<Array<Self::A, Self::D>> {
-        self.try_ndarray().expect("already mutably borrowed") 
+        self.try_ndarray().expect("already mutably borrowed")
     }
 
     fn ndarray_mut(&self) -> RefMut<Array<Self::A, Self::D>> {
-      self.try_ndarray_mut().expect("already mutably borrowed")  
+        self.try_ndarray_mut().expect("already mutably borrowed")
     }
 
     fn update_grad(&self, grad: Option<Array<Self::A, Self::D>>) {
@@ -182,7 +203,10 @@ where
         todo!()
     }
 
-    fn backward(&self) where A: Clone + One {
+    fn backward(&self)
+    where
+        A: Clone + One,
+    {
         let tensors = self.deepwalk();
         let self_grad: Array<A, D> = Array::ones(self.dim());
 
@@ -209,7 +233,6 @@ where
         }
     }
 }
-
 
 // #[cfg(test)]
 // mod binary_ops_tests {
