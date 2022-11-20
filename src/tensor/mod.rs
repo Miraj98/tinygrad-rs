@@ -87,9 +87,6 @@ where
             requires_grad: Cell::new(requires_grad),
         })
     }
-
-    fn _backward(&self, incoming: &Array<A, D>) {
-    }
 }
 
 impl<A, D> TensorBase<A, D>
@@ -254,7 +251,7 @@ where
 
 #[cfg(test)]
 mod binary_ops_tests {
-    use crate::tensor::{TensorBase, TensorBaseImpl};
+    use crate::tensor::{TensorBase, TensorBaseImpl, ops::binary_ops::MatMul};
 
     use super::{ops::binary_ops::BinaryOps};
     use ndarray::{array, Array2};
@@ -280,77 +277,77 @@ mod binary_ops_tests {
         assert_eq!(b.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
     }
 
-    // #[test]
-    // fn sub_tensors() {
-    //     let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
-    //     let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
-    //     let out = b.sub(&a);
-    //     assert_eq!(&out.ndarray() as &Array2<f64>, array![[1., 1.], [1., 1.]]);
-    // }
+    #[test]
+    fn sub_tensors() {
+        let a = TensorBase::new(array![[1., 2.], [3., 4.]], None);
+        let b = TensorBase::new(array![[2., 3.], [4., 5.]], None);
+        let out = b.sub(&a);
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[1., 1.], [1., 1.]]);
+    }
 
-    // #[test]
-    // fn sub_tensors_grad_test() {
-    //     let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
-    //     let b = Tensor::new(array![[2., 3.], [4., 5.]], Some(true));
-    //     let out = b.sub(&a);
+    #[test]
+    fn sub_tensors_grad_test() {
+        let a = TensorBase::new(array![[1., 2.], [3., 4.]], Some(true));
+        let b = TensorBase::new(array![[2., 3.], [4., 5.]], Some(true));
+        let out = b.sub(&a);
 
-    //     let out_grad_array = array![[1., 1.], [1., 1.]];
-    //     out.__backward(&out_grad_array);
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out._backward(&out_grad_array);
 
-    //     assert_eq!(a.grad().as_ref().unwrap(), array![[-1., -1.], [-1., -1.]]);
-    //     assert_eq!(b.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
-    // }
+        assert_eq!(a.grad().as_ref().unwrap(), array![[-1., -1.], [-1., -1.]]);
+        assert_eq!(b.grad().as_ref().unwrap(), array![[1., 1.], [1., 1.]]);
+    }
 
-    // #[test]
-    // fn mul_tensors() {
-    //     let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
-    //     let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
-    //     let out = a.mul(&b);
-    //     assert_eq!(&out.ndarray() as &Array2<f64>, array![[2., 6.], [12., 20.]]);
-    // }
+    #[test]
+    fn mul_tensors() {
+        let a = TensorBase::new(array![[1., 2.], [3., 4.]], None);
+        let b = TensorBase::new(array![[2., 3.], [4., 5.]], None);
+        let out = a.mul(&b);
+        assert_eq!(&out.ndarray() as &Array2<f64>, array![[2., 6.], [12., 20.]]);
+    }
 
-    // #[test]
-    // fn mul_tensors_grad_test() {
-    //     let a = Tensor::new(array![[1., 2.], [3., 4.]], Some(true));
-    //     let b = Tensor::new(array![[2., 3.], [4., 5.]], Some(true));
-    //     let out = a.mul(&b);
+    #[test]
+    fn mul_tensors_grad_test() {
+        let a = TensorBase::new(array![[1., 2.], [3., 4.]], Some(true));
+        let b = TensorBase::new(array![[2., 3.], [4., 5.]], Some(true));
+        let out = a.mul(&b);
 
-    //     let out_grad_array = array![[1., 1.], [1., 1.]];
-    //     out.__backward(&out_grad_array);
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out._backward(&out_grad_array);
 
-    //     assert_eq!(a.grad().as_ref().unwrap(), array![[2., 3.], [4., 5.]]);
-    //     assert_eq!(b.grad().as_ref().unwrap(), array![[1., 2.], [3., 4.]]);
-    // }
+        assert_eq!(a.grad().as_ref().unwrap(), array![[2., 3.], [4., 5.]]);
+        assert_eq!(b.grad().as_ref().unwrap(), array![[1., 2.], [3., 4.]]);
+    }
 
-    // #[test]
-    // fn matmul_tensors() {
-    //     let a = Tensor::new(array![[1., 2.], [3., 4.]], None);
-    //     let b = Tensor::new(array![[2., 3.], [4., 5.]], None);
-    //     let out = a.matmul(&b);
-    //     assert_eq!(
-    //         &out.ndarray() as &Array2<f64>,
-    //         array![[10., 13.], [22., 29.]]
-    //     );
-    // }
+    #[test]
+    fn matmul_tensors() {
+        let a = TensorBase::new(array![[1., 2.], [3., 4.]], None);
+        let b = TensorBase::new(array![[2., 3.], [4., 5.]], None);
+        let out = a.matmul(&b);
+        assert_eq!(
+            &out.ndarray() as &Array2<f64>,
+            array![[10., 13.], [22., 29.]]
+        );
+    }
 
-    // #[test]
-    // fn matmul_tensors_grad_test() {
-    //     let a = Tensor::new(array![[1., 2., 3.], [4., 5., 6.]], Some(true));
-    //     let b = Tensor::new(array![[2., 3.], [4., 5.], [6., 7.]], Some(true));
-    //     let out = a.matmul(&b);
+    #[test]
+    fn matmul_tensors_grad_test() {
+        let a = TensorBase::new(array![[1., 2., 3.], [4., 5., 6.]], Some(true));
+        let b = TensorBase::new(array![[2., 3.], [4., 5.], [6., 7.]], Some(true));
+        let out = a.matmul(&b);
 
-    //     let out_grad_array = array![[1., 1.], [1., 1.]];
-    //     out.__backward(&out_grad_array);
+        let out_grad_array = array![[1., 1.], [1., 1.]];
+        out._backward(&out_grad_array);
 
-    //     assert_eq!(
-    //         a.grad().as_ref().unwrap(),
-    //         array![[5., 9., 13.], [5., 9., 13.]]
-    //     );
-    //     assert_eq!(
-    //         b.grad().as_ref().unwrap(),
-    //         array![[5., 5.], [7., 7.], [9., 9.]]
-    //     );
-    // }
+        assert_eq!(
+            a.grad().as_ref().unwrap(),
+            array![[5., 9., 13.], [5., 9., 13.]]
+        );
+        assert_eq!(
+            b.grad().as_ref().unwrap(),
+            array![[5., 5.], [7., 7.], [9., 9.]]
+        );
+    }
 }
 
 // #[cfg(test)]
