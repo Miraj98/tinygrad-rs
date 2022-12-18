@@ -1,4 +1,6 @@
-use ndarray::Array2;
+
+/*
+use tensor_rs;
 
 pub trait Dataloader {
     fn get_by_idx(&self, idx: usize) -> (Array2<f64>, Array2<f64>);
@@ -84,3 +86,4 @@ pub mod mnist {
         }
     }
 }
+*/

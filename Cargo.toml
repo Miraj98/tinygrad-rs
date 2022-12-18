@@ -6,9 +6,4 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ndarray-rand = {version = "0.14.0"}
-image = {version = "0.24.3"}
-rand = {version = "0.8.5"}
-ndarray = {version = "0.15.6"}
-ndarray-stats = {version = "0.5.1"}
-plotters = {version = "0.3.1"}
+tensor-rs = { path = "../tensor-rs" }
