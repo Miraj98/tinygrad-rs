@@ -129,7 +129,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tinygrad-rust"
+name = "tinygrad-rs"
 version = "0.1.0"
 dependencies = [
  "tensor-rs",

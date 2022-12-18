@@ -113,10 +113,5 @@ mod tests {
         println!("{:?}", w_grad);
         println!("{:?}", b_grad);
     }
-
-    #[test]
-    fn other_test() {
-        eprintln!("This is the other test");
-    }
 }
 
