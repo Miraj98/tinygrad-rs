@@ -1,52 +1,130 @@
-use tensor_rs::{Tensor, DataElement, dim::Ix3};
-use std::fs;
+use std::{
+    fs::{self, File},
+    io::Seek,
+    ops::Range,
+    os::unix::prelude::FileExt,
+    path::Path,
+};
+use tensor_rs::{
+    dim::{Dimension, Ix3},
+    DataElement, Tensor,
+};
 
 pub struct Dataset<E>
 where
-    E: DataElement
+    E: DataElement,
 {
-    input: Tensor<Ix3, E>,
-    target: Tensor<Ix3, E>,
-    batch_size: usize,
+    training: Tensor<Ix3, E>,
+    labels: Tensor<Ix3, E>,
 }
 
-impl<E> Dataset<E>
-where
-    E: DataElement
-{
-    pub fn from_path(data: &str, labels: &str, f: impl Fn(Vec<u8>, Vec<u8>) -> Self) -> Self {
-        let raw_data = fs::read(data).expect("The data exists");
-        let raw_labels = fs::read(labels).expect("The labels exist");
-        f(raw_data, raw_labels)
+pub struct Dataloader {
+    path: &'static str,
+    offset_bytes: u64,
+    size: usize,
+}
+
+impl Dataloader {
+    pub fn new(path: &'static str) -> Dataloader {
+        Dataloader {
+            path,
+            size: 0,
+            offset_bytes: 0,
+        }
     }
 
-    pub fn from_params(input: Tensor<Ix3, E>, target: Tensor<Ix3, E>, batch_size: usize) -> Self {
-        Self { input, target, batch_size }
+    pub fn offset(mut self, x: u64) -> Self {
+        self.offset_bytes = x;
+        self
+    }
+
+    pub fn size(mut self, n: usize) -> Self {
+        self.size = n;
+        self
+    }
+
+    fn load_buf<E>(&mut self, total_bytes: usize) -> Vec<E>
+    where
+        E: DataElement,
+    {
+        let mut buf = vec![0u8; total_bytes];
+        let file = File::open(self.path).unwrap();
+        file.read_exact_at(&mut buf[..], self.offset_bytes).unwrap();
+        buf.iter().map(|x| E::from_u8(*x)).collect::<Vec<E>>()
+    }
+}
+
+pub trait Load<Rhs> {
+    type Dim: Dimension;
+    fn load<E>(&mut self, dim: Rhs) -> Tensor<Self::Dim, E>
+    where
+        E: DataElement;
+}
+
+impl Load<usize> for Dataloader {
+    type Dim = [usize; 2];
+    fn load<E>(&mut self, dim: usize) -> Tensor<Self::Dim, E>
+    where
+        E: DataElement,
+    {
+        Tensor::from_vec(self.load_buf(self.size * dim), [self.size, dim])
+    }
+}
+
+impl Load<(usize, usize)> for Dataloader {
+    type Dim = [usize; 3];
+    fn load<E>(&mut self, dim: (usize, usize)) -> Tensor<Self::Dim, E>
+    where
+        E: DataElement,
+    {
+        Tensor::from_vec(self.load_buf(self.size * dim.0 * dim.1), [self.size, dim.0, dim.1])
+    }
+}
+
+impl Load<(usize, usize, usize)> for Dataloader {
+    type Dim = [usize; 4];
+    fn load<E>(&mut self, dim: (usize, usize, usize)) -> Tensor<Self::Dim, E>
+    where
+        E: DataElement,
+    {
+        Tensor::from_vec(self.load_buf(self.size * dim.0 * dim.1 * dim.2), [self.size, dim.0, dim.1, dim.2])
+    }
+}
+
+impl Load<(usize, usize, usize, usize)> for Dataloader {
+    type Dim = [usize; 5];
+    fn load<E>(&mut self, dim: (usize, usize, usize, usize)) -> Tensor<Self::Dim, E>
+    where
+        E: DataElement,
+    {
+        Tensor::from_vec(self.load_buf(self.size * dim.0 * dim.1 * dim.2 * dim.3), [self.size, dim.0, dim.1, dim.2, dim.3])
+    }
+}
+
+impl Load<(usize, usize, usize, usize, usize)> for Dataloader {
+    type Dim = [usize; 6];
+    fn load<E>(&mut self, dim: (usize, usize, usize, usize, usize)) -> Tensor<Self::Dim, E>
+    where
+        E: DataElement,
+    {
+        Tensor::from_vec(
+            self.load_buf(self.size * dim.0 * dim.1 * dim.2 * dim.3 * dim.4),
+            [self.size, dim.0, dim.1, dim.2, dim.3, dim.4],
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use tensor_rs::IntoFloat32;
-
     use crate::dataloader::*;
     #[test]
     fn mnist() {
-        let _: Dataset<f32> = Dataset::from_path(
-            "./src/datasets/mnist_data/train-images-idx3-ubyte",
-            "./src/datasets/mnist_data/train-labels-idx1-ubyte",
-            |mut input, target| {
-                input.drain(0..16);
-                let i = input.iter().map(|x| x.f32()).collect::<Vec<f32>>();
-                let mut t: Vec<f32> = vec![0.; 60000*10];
-
-                let input_tensor = Tensor::from_vec(i, [60000, 784, 1]);
-                for _i in 0..60000 {
-                    t[_i * 10 + target[_i + 8] as usize] = 1.;
-                }
-                let target_tensor = Tensor::from_vec(t, [60000, 10, 1]);
-                Dataset::from_params(input_tensor, target_tensor, 10)
-            }
-        );
+        let mnist_data = Dataloader::new("./src/datasets/mnist_data/train-images-idx3-ubyte")
+            .offset(16)
+            .size(60_000)
+            .load::<f32>((784, 1));
+        assert_eq!(mnist_data.dim()[0], 60_000);
+        assert_eq!(mnist_data.dim()[1], 784);
+        assert_eq!(mnist_data.dim()[2], 1);
     }
 }

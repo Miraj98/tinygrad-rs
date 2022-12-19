@@ -1,4 +1,4 @@
-
+pub mod mnist_data;
 /*
 use tensor_rs;
 
