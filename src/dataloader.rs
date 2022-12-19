@@ -1,9 +1,6 @@
 use std::{
-    fs::{self, File},
-    io::Seek,
-    ops::Range,
+    fs::File,
     os::unix::prelude::FileExt,
-    path::Path,
 };
 use tensor_rs::{
     dim::{Dimension, Ix3},
