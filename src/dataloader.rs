@@ -56,6 +56,12 @@ where
         self.batch_idx += 1;
         return Some(val);
     }
+
+    fn count(self) -> usize
+        where
+            Self: Sized, {
+        return self.nbatches;
+    }
 }
 
 pub struct DatasetIterator<'a, S, E>
@@ -96,6 +102,12 @@ where
         let val = (self.dataset.training_set.outer_dim(self.index), self.dataset.labels.outer_dim(self.index));
         self.index += 1;
         return Some(val);
+    }
+
+    fn count(self) -> usize
+        where
+            Self: Sized, {
+        self.dataset.training_set.dim()[0]
     }
 }
 
