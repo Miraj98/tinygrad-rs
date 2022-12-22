@@ -1,7 +1,7 @@
 use tensor_rs::{
     TensorBase,
     impl_binary_ops::TensorBinaryOps, impl_constructors::TensorConstructors,
-    impl_processing_ops::{Matmul, Conv2d as Convolution2d}, DataBuffer, DataElement, Tensor, dim::{Ix2, Ix4, Ix3},
+    impl_processing_ops::{Matmul, Conv2d as Convolution2d}, DataBuffer, DataElement, Tensor, dim::{Ix2, Ix4, Ix3}, TensorView,
 };
 
 pub trait Layer<Input> {
@@ -42,6 +42,14 @@ impl Layer<&Tensor<Ix2>> for Linear<f32> {
     type Output = Tensor<Ix2>;
 
     fn forward(&self, input: &Tensor<Ix2>) -> Self::Output {
+        self.w.matmul(input).add(&self.b)
+    }
+}
+
+impl Layer<TensorView<Ix2, f32>> for Linear<f32> {
+    type Output = Tensor<Ix2>;
+
+    fn forward(&self, input: TensorView<Ix2, f32>) -> Self::Output {
         self.w.matmul(input).add(&self.b)
     }
 }

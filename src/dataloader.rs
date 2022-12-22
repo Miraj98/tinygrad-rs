@@ -1,6 +1,6 @@
 use std::{fs::File, os::unix::prelude::FileExt, ops::Range};
 use tensor_rs::{
-    dim::Dimension,
+    dim::{Dimension, IntoDimension},
     DataElement, Tensor, TensorView,
 };
 
@@ -96,7 +96,7 @@ where
     S: Dimension,
     E: DataElement
 {
-    type Item = (TensorView<'a, S::Smaller, E>, TensorView<'a, S::Smaller, E>);
+    type Item = (TensorView<S::Smaller, E>, TensorView<S::Smaller, E>);
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= self.range.end - 1 { return None; }
         let val = (self.dataset.training_set.outer_dim(self.index), self.dataset.labels.outer_dim(self.index));
@@ -117,7 +117,7 @@ where
     E: DataElement
 {
     type IntoIter = DatasetIterator<'a, S, E>;
-    type Item = (TensorView<'a, S::Smaller, E>, TensorView<'a, S::Smaller, E>);
+    type Item = (TensorView<S::Smaller, E>, TensorView<S::Smaller, E>);
     fn into_iter(self) -> Self::IntoIter {
         DatasetIterator::new(self)
     }
@@ -162,16 +162,15 @@ impl Dataloader {
 
     fn load_buf_with<E>(
         &mut self,
-        in_size: usize,
-        out_size: usize,
+        total_bytes: usize,
         mut f: impl FnMut((usize, u8), &mut Vec<E>),
     ) -> Vec<E>
     where
         E: DataElement,
     {
         let zero = E::zero();
-        let mut vec = vec![zero; out_size];
-        let mut buf = vec![0u8; in_size];
+        let mut vec = vec![zero; total_bytes];
+        let mut buf = vec![0u8; self.size];
         let file = File::open(self.path).unwrap();
         file.read_exact_at(&mut buf[..], self.offset_bytes).unwrap();
         buf.iter()
@@ -181,7 +180,7 @@ impl Dataloader {
     }
 }
 
-pub trait Load<Rhs> {
+pub trait Load<Rhs: IntoDimension> {
     type Dim: Dimension;
     fn load<E>(&mut self, dim: Rhs, normaliser: impl Fn(E) -> E) -> Tensor<Self::Dim, E>
     where
@@ -189,157 +188,36 @@ pub trait Load<Rhs> {
     fn load_with<E>(
         &mut self,
         dim: Rhs,
-        in_size: usize,
         f: impl FnMut((usize, u8), &mut Vec<E>),
     ) -> Tensor<Self::Dim, E>
     where
         E: DataElement;
 }
 
-impl Load<usize> for Dataloader {
-    type Dim = [usize; 2];
-    fn load<E>(&mut self, dim: usize, f: impl Fn(E) -> E) -> Tensor<Self::Dim, E>
-    where
-        E: DataElement,
-    {
-        Tensor::from_vec(self.load_buf(self.size * dim, f), [self.size, dim])
-    }
+impl<Rhs: IntoDimension> Load<Rhs> for Dataloader {
+    type Dim = <Rhs::Dim as Dimension>::Larger;
 
-    fn load_with<E>(
-        &mut self,
-        dim: usize,
-        in_size: usize,
-        f: impl FnMut((usize, u8), &mut Vec<E>),
-    ) -> Tensor<Self::Dim, E>
-    where
-        E: DataElement,
-    {
-        Tensor::from_vec(
-            self.load_buf_with(in_size, self.size * dim, f),
-            [self.size, dim],
-        )
-    }
-}
-
-impl Load<(usize, usize)> for Dataloader {
-    type Dim = [usize; 3];
-    fn load<E>(&mut self, dim: (usize, usize), f: impl Fn(E) -> E) -> Tensor<Self::Dim, E>
-    where
-        E: DataElement,
-    {
-        Tensor::from_vec(
-            self.load_buf(self.size * dim.0 * dim.1, f),
-            [self.size, dim.0, dim.1],
-        )
-    }
-
-    fn load_with<E>(
-        &mut self,
-        dim: (usize, usize),
-        in_size: usize,
-        f: impl FnMut((usize, u8), &mut Vec<E>),
-    ) -> Tensor<Self::Dim, E>
-    where
-        E: DataElement,
-    {
-        Tensor::from_vec(
-            self.load_buf_with(in_size, self.size * dim.0 * dim.1, f),
-            [self.size, dim.0, dim.1],
-        )
-    }
-}
-
-impl Load<(usize, usize, usize)> for Dataloader {
-    type Dim = [usize; 4];
-    fn load<E>(&mut self, dim: (usize, usize, usize), f: impl Fn(E) -> E) -> Tensor<Self::Dim, E>
-    where
-        E: DataElement,
-    {
-        Tensor::from_vec(
-            self.load_buf(self.size * dim.0 * dim.1 * dim.2, f),
-            [self.size, dim.0, dim.1, dim.2],
-        )
-    }
-
-    fn load_with<E>(
-        &mut self,
-        dim: (usize, usize, usize),
-        in_size: usize,
-        f: impl FnMut((usize, u8), &mut Vec<E>),
-    ) -> Tensor<Self::Dim, E>
-    where
-        E: DataElement,
-    {
-        Tensor::from_vec(
-            self.load_buf_with(in_size, self.size * dim.0 * dim.1 * dim.2, f),
-            [self.size, dim.0, dim.1, dim.2],
-        )
-    }
-}
-
-impl Load<(usize, usize, usize, usize)> for Dataloader {
-    type Dim = [usize; 5];
     fn load<E>(
         &mut self,
-        dim: (usize, usize, usize, usize),
-        f: impl Fn(E) -> E,
-    ) -> Tensor<Self::Dim, E>
-    where
-        E: DataElement,
-    {
-        Tensor::from_vec(
-            self.load_buf(self.size * dim.0 * dim.1 * dim.2 * dim.3, f),
-            [self.size, dim.0, dim.1, dim.2, dim.3],
-        )
+        dim: Rhs,
+        normaliser: impl Fn(E) -> E
+    ) -> Tensor<Self::Dim, E> where E: DataElement {
+       let d = dim.into_dimension().expand(self.size);
+       let total_bytes = d.count();
+       Tensor::from_vec(self.load_buf(total_bytes, normaliser), d)
     }
 
     fn load_with<E>(
         &mut self,
-        dim: (usize, usize, usize, usize),
-        in_size: usize,
+        dim: Rhs,
         f: impl FnMut((usize, u8), &mut Vec<E>),
-    ) -> Tensor<Self::Dim, E>
-    where
-        E: DataElement,
-    {
-        Tensor::from_vec(
-            self.load_buf_with(in_size, self.size * dim.0 * dim.1 * dim.2 * dim.3, f),
-            [self.size, dim.0, dim.1, dim.2, dim.3],
-        )
+    ) -> Tensor<Self::Dim, E> where E: DataElement {
+       let d = dim.into_dimension().expand(self.size);
+       let total_bytes = d.count();
+       Tensor::from_vec(self.load_buf_with(total_bytes, f), d)
     }
 }
 
-impl Load<(usize, usize, usize, usize, usize)> for Dataloader {
-    type Dim = [usize; 6];
-    fn load<E>(
-        &mut self,
-        dim: (usize, usize, usize, usize, usize),
-        f: impl Fn(E) -> E,
-    ) -> Tensor<Self::Dim, E>
-    where
-        E: DataElement,
-    {
-        Tensor::from_vec(
-            self.load_buf(self.size * dim.0 * dim.1 * dim.2 * dim.3 * dim.4, f),
-            [self.size, dim.0, dim.1, dim.2, dim.3, dim.4],
-        )
-    }
-
-    fn load_with<E>(
-        &mut self,
-        dim:(usize, usize, usize, usize, usize),
-        in_size: usize,
-        f: impl FnMut((usize, u8), &mut Vec<E>),
-    ) -> Tensor<Self::Dim, E>
-    where
-        E: DataElement,
-    {
-        Tensor::from_vec(
-            self.load_buf_with(in_size, self.size * dim.0 * dim.1 * dim.2 * dim.3 * dim.4, f),
-            [self.size, dim.0, dim.1, dim.2, dim.3, dim.4],
-        )
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -353,7 +231,7 @@ mod tests {
         let mnist_labels = Dataloader::new("./src/datasets/mnist_data/train-labels-idx1-ubyte")
             .offset(8)
             .size(60_000)
-            .load_with::<f32>((10, 1), 60_000, |(i, val), vec| { vec[10 * i + val as usize] = 1. });
+            .load_with::<f32>((10, 1), |(i, val), vec| { vec[10 * i + val as usize] = 1. });
 
         assert_eq!(mnist_training.dim()[0], 60_000);
         assert_eq!(mnist_training.dim()[1], 784);
