@@ -1,16 +1,16 @@
 use tensor_rs::{
     dim::Dimension, impl_binary_ops::TensorBinaryOps, impl_reduce_ops::ReduceOps,
-    impl_unary_ops::TensorUnaryOps, Tensor, impl_constructors::TensorConstructors,
+    impl_unary_ops::TensorUnaryOps, Tensor, impl_constructors::TensorConstructors, TensorView,
 };
 
 #[allow(non_snake_case)]
 #[inline]
-pub fn MSELoss<S>() -> impl Fn(Tensor<S>, &Tensor<S>) -> Tensor<[usize; 0]>
+pub fn MSELoss<S>() -> impl Fn(Tensor<S>, TensorView<S>) -> Tensor<[usize; 0]>
 where
     S: Dimension + 'static,
 {
     |output, target| {
-        let l = output.sub(target).square();
+        let l = output.sub(&target).square();
         let loss = l.mean();
         loss
     }
@@ -18,7 +18,7 @@ where
 
 #[allow(non_snake_case)]
 #[inline]
-pub fn CrossEntropyLoss<S>() -> impl Fn(Tensor<S>, &Tensor<S>) -> Tensor<[usize; 0]>
+pub fn CrossEntropyLoss<S>() -> impl Fn(Tensor<S>, TensorView<S>) -> Tensor<[usize; 0]>
 where
     S: Dimension + 'static,
 {
