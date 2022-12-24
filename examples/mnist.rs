@@ -18,7 +18,7 @@ struct Model(pub Linear<f32>, pub Linear<f32>);
 
 impl Model {
     pub fn new() -> Self {
-        Self(Linear::new(256, 784), Linear::new(10, 256))
+        Self(Linear::new(30, 784), Linear::new(10, 30))
     }
 
     pub fn train(&mut self, dataset: Dataset<[usize; 3], f32>) {
@@ -27,23 +27,22 @@ impl Model {
         let alpha = 3. / batch_size as f32;
         let epochs = 30;
         for e in 0..epochs {
+            println!("Epoch {}", e);
             let start = Instant::now();
             for batch in dataset.batch_iter(batch_size) {
+                // let batch_start = Instant::now();
                 let (mut wg0, mut bg0) = self.0.zeros();
                 let (mut wg1, mut bg1) = self.1.zeros();
-                for (x, y) in batch {
-                    let mut a = self.0.forward(x);
-                    a = self.1.forward(a.sigmoid()).sigmoid();
+                for (i, (x, y)) in batch.enumerate() {
+                    let mut a = self.0.forward(x).sigmoid();
+                    a = self.1.forward(a).sigmoid();
                     let loss = criterion(a, y);
                     let grads = loss.backward();
                     wg0 += grads.grad(self.0.weight());
                     bg0 += grads.grad(self.0.bias());
                     wg1 += grads.grad(self.1.weight());
                     bg1 += grads.grad(self.1.bias());
-                    self.0.weight().put_backward_ops(Some(BackwardOps::new()));
-                    self.1.weight().put_backward_ops(Some(BackwardOps::new()));
-                    self.0.bias().put_backward_ops(Some(BackwardOps::new()));
-                    self.1.bias().put_backward_ops(Some(BackwardOps::new()));
+                    self.0.weight_mut().put_backward_ops(Some(BackwardOps::new()));
                 }
                 wg0 *= alpha;
                 bg0 *= alpha;
@@ -54,6 +53,7 @@ impl Model {
                 *self.0.bias_mut() -= bg0;
                 *self.1.weight_mut() -= wg1;
                 *self.1.bias_mut() -= bg1;
+                // println!("Batch time {}", batch_start.elapsed().as_secs_f64());
             }
             println!(
                 "Completed epoch {e} in {} secs",

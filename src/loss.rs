@@ -1,5 +1,5 @@
 use tensor_rs::{
-    dim::Dimension, impl_binary_ops::TensorBinaryOps, impl_reduce_ops::ReduceOps,
+    dim::Dimension, impl_binary_ops::{TensorBinaryOps, TensorBinaryScalarOps}, impl_reduce_ops::ReduceOps,
     impl_unary_ops::TensorUnaryOps, Tensor, impl_constructors::TensorConstructors, TensorView,
 };
 
@@ -25,12 +25,12 @@ where
     |output, target| {
         let output_ln = output.ln();
         let lhs = target.mul(&output_ln);
-        let ones = Tensor::ones(target.dim());
+        let ones = Tensor::ones(target.dim()).requires_grad(true);
         let _a = ones.sub(&output);
         let _y = ones.sub(&target);
         let rhs = _y.mul(&_a.ln());
 
-        let l = lhs.add(&rhs) * -1.;
+        let l = lhs.add(&rhs).mul_scalar(-1.);
         let loss = l.mean();
         loss
     }

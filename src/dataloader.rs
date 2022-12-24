@@ -86,6 +86,7 @@ where
     pub fn range(mut self, range: Range<usize>) -> Self {
         assert!(range.start < range.end);
         assert!(range.end < self.dataset.training_set.dim()[0]);
+        self.index = range.start;
         self.range = range;
         self
     }
@@ -98,17 +99,17 @@ where
 {
     type Item = (TensorView<S::Smaller, E>, TensorView<S::Smaller, E>);
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.range.end - 1 { return None; }
+        if self.index >= self.range.end { return None; }
         let val = (self.dataset.training_set.outer_dim(self.index), self.dataset.labels.outer_dim(self.index));
         self.index += 1;
         return Some(val);
     }
 
-    fn count(self) -> usize
-        where
-            Self: Sized, {
-        self.dataset.training_set.dim()[0]
-    }
+    // fn count(self) -> usize
+    //     where
+    //         Self: Sized, {
+    //     self.dataset.training_set.dim()[0]
+    // }
 }
 
 impl<'a, S, E> IntoIterator for &'a Dataset<S, E>
@@ -222,6 +223,8 @@ impl<Rhs: IntoDimension> Load<Rhs> for Dataloader {
 #[cfg(test)]
 mod tests {
     use crate::dataloader::*;
+    use crate::datasets::mnist_data::MnistDataset;
+
     #[test]
     fn mnist() {
         let mnist_training = Dataloader::new("./src/datasets/mnist_data/train-images-idx3-ubyte")
@@ -240,5 +243,13 @@ mod tests {
         assert_eq!(mnist_labels.dim()[0], 60_000);
         assert_eq!(mnist_labels.dim()[1], 10);
         assert_eq!(mnist_labels.dim()[2], 1);
+    }
+
+    #[test]
+    fn batched_iter() {
+        let dataset = MnistDataset();
+        for batch in dataset.batch_iter(10) {
+            assert_eq!(batch.count(), 10);
+        }
     }
 }
