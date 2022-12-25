@@ -93,6 +93,12 @@ impl Layer<&Tensor<Ix2>> for Linear<f32> {
     fn forward(&self, input: &Tensor<Ix2>) -> Self::Output {
         self.w.matmul(input).add(&self.b)
     }
+
+    fn with_training(mut self, train: bool) -> Self {
+        self.w = self.w.requires_grad(train);
+        self.b = self.b.requires_grad(train);
+        self
+    }
 }
 
 impl Layer<Tensor<Ix2>> for Linear<f32> {
@@ -101,6 +107,12 @@ impl Layer<Tensor<Ix2>> for Linear<f32> {
     fn forward(&self, input: Tensor<Ix2>) -> Self::Output {
         self.w.matmul(input).add(&self.b)
     }
+
+    fn with_training(mut self, train: bool) -> Self {
+        self.w = self.w.requires_grad(train);
+        self.b = self.b.requires_grad(train);
+        self
+    }
 }
 
 impl Layer<TensorView<Ix2, f32>> for Linear<f32> {
@@ -108,6 +120,12 @@ impl Layer<TensorView<Ix2, f32>> for Linear<f32> {
 
     fn forward(&self, input: TensorView<Ix2, f32>) -> Self::Output {
         self.w.matmul(input).add(&self.b)
+    }
+
+    fn with_training(mut self, train: bool) -> Self {
+        self.w = self.w.requires_grad(train);
+        self.b = self.b.requires_grad(train);
+        self
     }
 }
 

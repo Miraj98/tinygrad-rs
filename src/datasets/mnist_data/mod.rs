@@ -11,5 +11,5 @@ pub fn MnistDataset() -> Dataset<[usize; 3], f32> {
         .size(60_000)
         .load_with::<f32>((10, 1), |(i, val), vec| vec[10 * i + val as usize] = 1.);
 
-    Dataset::new((mnist_training, mnist_labels, None))
+    Dataset::new((mnist_training, mnist_labels))
 }

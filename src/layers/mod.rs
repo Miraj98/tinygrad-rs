@@ -11,6 +11,7 @@ pub trait Layer<Input> {
     type Output;
 
     fn forward(&self, input: Input) -> Self::Output;
+    fn with_training(self, train: bool) -> Self;
 }
 
 
@@ -34,8 +35,8 @@ where
         strides: (usize, usize),
     ) -> Self {
         Self {
-            w: Tensor::randn([output_channels, input_channels, kernel_size.0, kernel_size.1]).requires_grad(true),
-            b: Tensor::randn([output_channels, 1, 1, 1]).requires_grad(true),
+            w: Tensor::randn([output_channels, input_channels, kernel_size.0, kernel_size.1]),
+            b: Tensor::randn([output_channels, 1, 1, 1]),
             strides,
         }
     }
@@ -51,6 +52,10 @@ where
     pub fn strides(&self) -> (usize, usize) {
         self.strides
     }
+
+    pub fn zeros(&self) -> (Tensor<Ix4, E>, Tensor<Ix4, E>) {
+        (Tensor::zeros(self.w.dim()), Tensor::zeros(self.b.dim()))
+    }
 }
 
 impl<B, E> Layer<&TensorBase<Ix3, B>> for Conv2d<E>
@@ -61,6 +66,12 @@ where
     type Output = Tensor<Ix3, E>;
     fn forward(&self, input: &TensorBase<Ix3, B>) -> Self::Output {
        input.conv2d(&self.w, (1, 1)) 
+    }
+
+    fn with_training(mut self, train: bool) -> Self {
+        self.w = self.w.requires_grad(train);
+        self.b = self.b.requires_grad(train);
+        self
     }
 }
 

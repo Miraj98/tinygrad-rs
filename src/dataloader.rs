@@ -11,7 +11,6 @@ where
 {
     training_set: Tensor<S, E>,
     labels: Tensor<S, E>,
-    test_set: Option<Tensor<S, E>>,
 }
 
 impl<E, S> Dataset<S, E>
@@ -19,8 +18,8 @@ where
     E: DataElement,
     S: Dimension
 {
-    pub fn new(args: (Tensor<S, E>, Tensor<S, E>, Option<Tensor<S, E>>)) -> Self {
-        Dataset { training_set: args.0, labels: args.1, test_set: args.2 }
+    pub fn new(args: (Tensor<S, E>, Tensor<S, E>)) -> Self {
+        Dataset { training_set: args.0, labels: args.1 }
     }
 
     pub fn iter(&self) -> DatasetIterator<'_, S, E> {
